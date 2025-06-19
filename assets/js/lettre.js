@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', function() {
             entries: selectedEntries
         };
         
-        // Étape 1: Générer les PDFs
+        // Étape 1: Générer les PDFs et créer la campagne en BDD
         const formData = new FormData();
         formData.append('action', 'sci_generer_pdfs');
         formData.append('data', JSON.stringify(campaignData));
@@ -154,12 +154,12 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.success && data.data.files) {
+            if (data.success && data.data.files && data.data.campaign_id) {
                 // Étape 2: Envoyer chaque lettre via l'API La Poste
                 sendCampaignBtn.textContent = 'Envoi des lettres...';
                 showProgress(0, selectedEntries.length, 'Préparation de l\'envoi...');
                 
-                return sendLettersSequentially(data.data.files, selectedEntries, campaignData);
+                return sendLettersSequentially(data.data.files, selectedEntries, campaignData, data.data.campaign_id);
             } else {
                 throw new Error('Erreur lors de la génération des PDFs: ' + (data.data || 'Erreur inconnue'));
             }
@@ -175,11 +175,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (errorCount > 0) {
                 message += `• ${errorCount} erreurs d'envoi\n`;
             }
+            message += `\n📋 Consultez le détail dans "SCI > Mes Campagnes"`;
             
             // Afficher les détails des erreurs si nécessaire
             const errors = results.filter(r => !r.success);
             if (errors.length > 0) {
-                message += `\n❌ Erreurs :\n`;
+                message += `\n\n❌ Erreurs :\n`;
                 errors.forEach((error, index) => {
                     message += `• ${error.denomination}: ${error.error}\n`;
                 });
@@ -209,7 +210,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Fonction pour envoyer les lettres séquentiellement
-    async function sendLettersSequentially(pdfFiles, entries, campaignData) {
+    async function sendLettersSequentially(pdfFiles, entries, campaignData, campaignId) {
         const results = [];
         
         for (let i = 0; i < entries.length; i++) {
@@ -230,6 +231,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 letterData.append('entry', JSON.stringify(entry));
                 letterData.append('pdf_base64', pdfBase64);
                 letterData.append('campaign_title', campaignData.title);
+                letterData.append('campaign_id', campaignId); // Ajouter l'ID de campagne
                 
                 // Envoyer via AJAX
                 const response = await fetch(ajaxurl, {
