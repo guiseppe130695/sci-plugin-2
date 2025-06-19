@@ -12,6 +12,7 @@ include plugin_dir_path(__FILE__) . 'popup-lettre.php';
 require_once plugin_dir_path(__FILE__) . 'lib/tcpdf/tcpdf.php';
 require_once plugin_dir_path(__FILE__) . 'includes/favoris-handler.php';
 require_once plugin_dir_path(__FILE__) . 'includes/config-manager.php';
+require_once plugin_dir_path(__FILE__) . 'includes/campaign-manager.php';
 
 
 // --- Ajout du menu SCI dans l'admin WordPress ---
@@ -35,6 +36,16 @@ function sci_ajouter_menu() {
         'read',
         'sci-favoris',
         'sci_favoris_page'
+    );
+
+    // Ajouter une page pour les campagnes
+    add_submenu_page(
+        'sci-panel',
+        'Campagnes',
+        'Mes Campagnes',
+        'read',
+        'sci-campaigns',
+        'sci_campaigns_page'
     );
 
     // Ajouter une page pour voir les logs d'API
@@ -342,15 +353,22 @@ function sci_envoyer_lettre_laposte_ajax() {
     $entry = json_decode(stripslashes($_POST['entry']), true);
     $pdf_base64 = $_POST['pdf_base64'];
     $campaign_title = sanitize_text_field($_POST['campaign_title'] ?? '');
+    $campaign_id = intval($_POST['campaign_id'] ?? 0);
 
     if (!$entry || !$pdf_base64) {
         wp_send_json_error('Données invalides');
         return;
     }
 
-    // Récupérer les données de l'expéditeur (utilisateur courant)
-    $current_user = wp_get_current_user();
-    $user_meta = get_user_meta($current_user->ID);
+    // Récupérer les données de l'expéditeur depuis le gestionnaire de campagnes
+    $campaign_manager = sci_campaign_manager();
+    $expedition_data = $campaign_manager->get_user_expedition_data();
+    
+    // Vérifier que les données essentielles sont présentes
+    if (empty($expedition_data['prenom']) && empty($expedition_data['nom']) && empty($expedition_data['nom_societe'])) {
+        wp_send_json_error('Données expéditeur incomplètes. Veuillez compléter votre profil utilisateur.');
+        return;
+    }
     
     // Préparer le payload pour l'API La Poste
     $payload = [
@@ -365,21 +383,11 @@ function sci_envoyer_lettre_laposte_ajax() {
         "ar_scan" => true,
 
         // Accusé de réception
-        "ar_expediteur_champ1" => $current_user->first_name ?? '',
-        "ar_expediteur_champ2" => $current_user->last_name ?? '',
+        "ar_expediteur_champ1" => $expedition_data['prenom'],
+        "ar_expediteur_champ2" => $expedition_data['nom'],
 
-        // Adresse expéditeur (récupérée depuis le profil utilisateur ou ACF)
-        "adresse_expedition" => [
-            "civilite" => get_field('civilite_user', 'user_' . $current_user->ID) ?? 'M.',
-            "prenom" => $current_user->first_name ?? '',
-            "nom" => $current_user->last_name ?? '',
-            "nom_societe" => get_field('societe_user', 'user_' . $current_user->ID) ?? '',
-            "adresse_ligne1" => get_field('adresse_user', 'user_' . $current_user->ID) ?? '',
-            "adresse_ligne2" => get_field('adresse2_user', 'user_' . $current_user->ID) ?? '',
-            "code_postal" => get_field('cp_user', 'user_' . $current_user->ID) ?? '',
-            "ville" => get_field('ville_user', 'user_' . $current_user->ID) ?? '',
-            "pays" => "FRANCE",
-        ],
+        // Adresse expéditeur (récupérée depuis le profil utilisateur)
+        "adresse_expedition" => $expedition_data,
 
         // Adresse destinataire (SCI sélectionnée)
         "adresse_destination" => [
@@ -424,6 +432,17 @@ function sci_envoyer_lettre_laposte_ajax() {
 
     if ($response['success']) {
         lettre_laposte_log("✅ SUCCÈS pour {$entry['denomination']} - UID: " . ($response['uid'] ?? 'N/A'));
+        
+        // Mettre à jour le statut dans la base de données
+        if ($campaign_id > 0) {
+            $campaign_manager->update_letter_status(
+                $campaign_id, 
+                $entry['siren'], 
+                'sent', 
+                $response['uid'] ?? null
+            );
+        }
+        
         wp_send_json_success([
             'message' => 'Lettre envoyée avec succès',
             'uid' => $response['uid'] ?? 'non disponible',
@@ -442,6 +461,17 @@ function sci_envoyer_lettre_laposte_ajax() {
         lettre_laposte_log("❌ ERREUR pour {$entry['denomination']}: $error_msg");
         lettre_laposte_log("Code HTTP: " . ($response['code'] ?? 'N/A'));
         lettre_laposte_log("Message détaillé: " . json_encode($response['message'] ?? [], JSON_PRETTY_PRINT));
+        
+        // Mettre à jour le statut d'erreur dans la base de données
+        if ($campaign_id > 0) {
+            $campaign_manager->update_letter_status(
+                $campaign_id, 
+                $entry['siren'], 
+                'failed', 
+                null, 
+                $error_msg
+            );
+        }
         
         wp_send_json_error($error_msg);
     }
@@ -602,6 +632,165 @@ function sci_favoris_page() {
     <?php
 }
 
+// --- PAGE POUR AFFICHER LES CAMPAGNES ---
+function sci_campaigns_page() {
+    $campaign_manager = sci_campaign_manager();
+    $campaigns = $campaign_manager->get_user_campaigns();
+    
+    // Gestion de l'affichage des détails d'une campagne
+    if (isset($_GET['view']) && is_numeric($_GET['view'])) {
+        $campaign_details = $campaign_manager->get_campaign_details(intval($_GET['view']));
+        if ($campaign_details) {
+            sci_display_campaign_details($campaign_details);
+            return;
+        }
+    }
+    ?>
+    <div class="wrap">
+        <h1>📬 Mes Campagnes de Lettres</h1>
+        
+        <?php if (empty($campaigns)): ?>
+            <div class="notice notice-info">
+                <p>Aucune campagne trouvée. Créez votre première campagne depuis la page principale SCI.</p>
+            </div>
+        <?php else: ?>
+            <table class="widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Titre</th>
+                        <th>Statut</th>
+                        <th>Total</th>
+                        <th>Envoyées</th>
+                        <th>Erreurs</th>
+                        <th>Date création</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($campaigns as $campaign): ?>
+                        <tr>
+                            <td><strong><?php echo esc_html($campaign['title']); ?></strong></td>
+                            <td>
+                                <?php
+                                $status_labels = [
+                                    'draft' => '📝 Brouillon',
+                                    'processing' => '⏳ En cours',
+                                    'completed' => '✅ Terminée',
+                                    'completed_with_errors' => '⚠️ Terminée avec erreurs'
+                                ];
+                                echo $status_labels[$campaign['status']] ?? $campaign['status'];
+                                ?>
+                            </td>
+                            <td><?php echo intval($campaign['total_letters']); ?></td>
+                            <td><?php echo intval($campaign['sent_letters']); ?></td>
+                            <td><?php echo intval($campaign['failed_letters']); ?></td>
+                            <td><?php echo date('d/m/Y H:i', strtotime($campaign['created_at'])); ?></td>
+                            <td>
+                                <a href="<?php echo admin_url('admin.php?page=sci-campaigns&view=' . $campaign['id']); ?>" 
+                                   class="button button-small">
+                                    👁️ Voir détails
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+function sci_display_campaign_details($campaign) {
+    ?>
+    <div class="wrap">
+        <h1>📬 Détails de la campagne : <?php echo esc_html($campaign['title']); ?></h1>
+        
+        <a href="<?php echo admin_url('admin.php?page=sci-campaigns'); ?>" class="button">
+            ← Retour aux campagnes
+        </a>
+        
+        <div style="background: #fff; padding: 20px; margin: 20px 0; border: 1px solid #ccc; border-radius: 5px;">
+            <h3>📊 Résumé</h3>
+            <p><strong>Statut :</strong> 
+                <?php
+                $status_labels = [
+                    'draft' => '📝 Brouillon',
+                    'processing' => '⏳ En cours',
+                    'completed' => '✅ Terminée',
+                    'completed_with_errors' => '⚠️ Terminée avec erreurs'
+                ];
+                echo $status_labels[$campaign['status']] ?? $campaign['status'];
+                ?>
+            </p>
+            <p><strong>Total lettres :</strong> <?php echo intval($campaign['total_letters']); ?></p>
+            <p><strong>Envoyées :</strong> <?php echo intval($campaign['sent_letters']); ?></p>
+            <p><strong>Erreurs :</strong> <?php echo intval($campaign['failed_letters']); ?></p>
+            <p><strong>Date création :</strong> <?php echo date('d/m/Y H:i:s', strtotime($campaign['created_at'])); ?></p>
+            
+            <h4>📝 Contenu de la lettre :</h4>
+            <div style="background: #f9f9f9; padding: 15px; border-left: 4px solid #0073aa;">
+                <?php echo nl2br(esc_html($campaign['content'])); ?>
+            </div>
+        </div>
+        
+        <h3>📋 Détail des envois</h3>
+        <table class="widefat fixed striped">
+            <thead>
+                <tr>
+                    <th>SCI</th>
+                    <th>Dirigeant</th>
+                    <th>SIREN</th>
+                    <th>Adresse</th>
+                    <th>Statut</th>
+                    <th>UID La Poste</th>
+                    <th>Date envoi</th>
+                    <th>Erreur</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($campaign['letters'] as $letter): ?>
+                    <tr>
+                        <td><?php echo esc_html($letter['sci_denomination']); ?></td>
+                        <td><?php echo esc_html($letter['sci_dirigeant']); ?></td>
+                        <td><?php echo esc_html($letter['sci_siren']); ?></td>
+                        <td><?php echo esc_html($letter['sci_adresse'] . ', ' . $letter['sci_code_postal'] . ' ' . $letter['sci_ville']); ?></td>
+                        <td>
+                            <?php
+                            $status_icons = [
+                                'pending' => '⏳ En attente',
+                                'sent' => '✅ Envoyée',
+                                'failed' => '❌ Erreur'
+                            ];
+                            echo $status_icons[$letter['status']] ?? $letter['status'];
+                            ?>
+                        </td>
+                        <td>
+                            <?php if ($letter['laposte_uid']): ?>
+                                <code><?php echo esc_html($letter['laposte_uid']); ?></code>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php echo $letter['sent_at'] ? date('d/m/Y H:i', strtotime($letter['sent_at'])) : '-'; ?>
+                        </td>
+                        <td>
+                            <?php if ($letter['error_message']): ?>
+                                <span style="color: red; font-size: 12px;">
+                                    <?php echo esc_html($letter['error_message']); ?>
+                                </span>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
 // --- PAGE POUR AFFICHER LES LOGS D'API ---
 function sci_logs_page() {
     ?>
@@ -685,6 +874,15 @@ function sci_generer_pdfs() {
         wp_send_json_error("Entrées invalides.");
     }
 
+    // Créer la campagne en base de données
+    $campaign_manager = sci_campaign_manager();
+    $campaign_id = $campaign_manager->create_campaign($data['title'], $data['content'], $data['entries']);
+    
+    if (is_wp_error($campaign_id)) {
+        wp_send_json_error("Erreur lors de la création de la campagne : " . $campaign_id->get_error_message());
+        return;
+    }
+
     // Inclure TCPDF ou FPDF
     require_once plugin_dir_path(__FILE__) . 'lib/tcpdf/tcpdf.php';
 
@@ -716,7 +914,10 @@ function sci_generer_pdfs() {
         ];
     }
 
-    wp_send_json_success(['files' => $pdf_links]);
+    wp_send_json_success([
+        'files' => $pdf_links,
+        'campaign_id' => $campaign_id
+    ]);
 }
 
 add_action('admin_enqueue_scripts', function () {
