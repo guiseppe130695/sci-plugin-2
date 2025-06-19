@@ -10,6 +10,7 @@ if (!defined('ABSPATH')) exit; // Sécurité : Empêche l'accès direct au fichi
 
 include plugin_dir_path(__FILE__) . 'popup-lettre.php';
 require_once plugin_dir_path(__FILE__) . 'lib/tcpdf/tcpdf.php';
+require_once plugin_dir_path(__FILE__) . 'includes/favoris-handler.php';
 
 
 // --- Ajout du menu SCI dans l'admin WordPress ---
@@ -392,6 +393,12 @@ function sci_enqueue_admin_scripts() {
         true
     );
 
+    // Localisation des variables AJAX pour le script favoris
+    wp_localize_script('sci-favoris', 'sci_ajax', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('sci_favoris_nonce')
+    ));
+
     // Facultatif : ajouter ton CSS si besoin
     wp_enqueue_style(
         'sci-style',
@@ -467,6 +474,8 @@ function envoyer_lettre_via_api_la_poste_my_istymo($payload, $token) {
 // --- AJOUT AJAX POUR RECUPERER LES FAVORIS ---
 
 function sci_favoris_page() {
+    global $sci_favoris_handler;
+    $favoris = $sci_favoris_handler->get_favoris();
     ?>
     <div class="wrap">
         <h1>⭐ Mes SCI Favoris</h1>
@@ -483,44 +492,63 @@ function sci_favoris_page() {
                 </tr>
             </thead>
             <tbody>
-                <!-- JS remplira ce tableau -->
+                <?php if (empty($favoris)): ?>
+                    <tr>
+                        <td colspan="7" style="text-align:center;">Aucun favori pour le moment.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($favoris as $fav): ?>
+                        <tr>
+                            <td><?php echo esc_html($fav['denomination']); ?></td>
+                            <td><?php echo esc_html($fav['dirigeant']); ?></td>
+                            <td><?php echo esc_html($fav['siren']); ?></td>
+                            <td><?php echo esc_html($fav['adresse']); ?></td>
+                            <td><?php echo esc_html($fav['ville']); ?></td>
+                            <td><?php echo esc_html($fav['code_postal']); ?></td>
+                            <td>
+                                <button class="remove-fav-btn button button-small" 
+                                        data-siren="<?php echo esc_attr($fav['siren']); ?>">
+                                    🗑️ Supprimer
+                                </button>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', function () {
-        let favoris = JSON.parse(localStorage.getItem('sci_favoris') || '[]');
-        const tbody = document.querySelector('#table-favoris tbody');
-        tbody.innerHTML = '';
-
-        if (favoris.length === 0) {
-            const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="7" style="text-align:center;">Aucun favori pour le moment.</td>`;
-            tbody.appendChild(row);
-            return;
-        }
-
-        favoris.forEach(fav => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${fav.denomination}</td>
-                <td>${fav.dirigeant}</td>
-                <td>${fav.siren}</td>
-                <td>${fav.adresse}</td>
-                <td>${fav.ville}</td>
-                <td>${fav.code_postal}</td>
-                <td><button class="remove-fav-btn" data-siren="${fav.siren}">🗑️ Déjà traitée ?</button></td>
-            `;
-            tbody.appendChild(tr);
-        });
-
         document.querySelectorAll('.remove-fav-btn').forEach(btn => {
             btn.addEventListener('click', () => {
+                if (!confirm('Êtes-vous sûr de vouloir supprimer ce favori ?')) {
+                    return;
+                }
+
                 const siren = btn.getAttribute('data-siren');
-                favoris = favoris.filter(fav => fav.siren !== siren);
-                localStorage.setItem('sci_favoris', JSON.stringify(favoris));
-                location.reload(); // Recharger le tableau
+                const formData = new FormData();
+                formData.append('action', 'sci_manage_favoris');
+                formData.append('operation', 'remove');
+                formData.append('nonce', sci_ajax.nonce);
+                formData.append('sci_data', JSON.stringify({siren: siren}));
+
+                fetch(sci_ajax.ajax_url, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload(); // Recharger la page
+                    } else {
+                        alert('Erreur lors de la suppression : ' + data.data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur:', error);
+                    alert('Erreur réseau');
+                });
             });
         });
     });
