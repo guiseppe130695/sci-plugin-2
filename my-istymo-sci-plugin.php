@@ -11,6 +11,7 @@ if (!defined('ABSPATH')) exit; // Sécurité : Empêche l'accès direct au fichi
 include plugin_dir_path(__FILE__) . 'popup-lettre.php';
 require_once plugin_dir_path(__FILE__) . 'lib/tcpdf/tcpdf.php';
 require_once plugin_dir_path(__FILE__) . 'includes/favoris-handler.php';
+require_once plugin_dir_path(__FILE__) . 'includes/config-manager.php';
 
 
 // --- Ajout du menu SCI dans l'admin WordPress ---
@@ -54,30 +55,36 @@ function sci_afficher_panel() {
 
     $resultats = []; // Initialise un tableau vide pour les résultats
 
+    // Vérifier si la configuration API est complète
+    $config_manager = sci_config_manager();
+    if (!$config_manager->is_configured()) {
+        echo '<div class="notice notice-error"><p><strong>⚠️ Configuration manquante :</strong> Veuillez configurer vos tokens API dans <a href="' . admin_url('admin.php?page=sci-config') . '">Configuration</a>.</p></div>';
+    }
+
     // Si un formulaire POST a été envoyé avec un code postal sélectionné
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['codePostal'])) {
-    error_log('POST reçu: ' . print_r($_POST, true));
+        error_log('POST reçu: ' . print_r($_POST, true));
 
-    $postal_code = sanitize_text_field($_POST['codePostal']);
-    $resultats = sci_fetch_inpi_data($postal_code);
+        $postal_code = sanitize_text_field($_POST['codePostal']);
+        $resultats = sci_fetch_inpi_data($postal_code);
 
-    // Vérification si $resultats est une erreur
-    if (is_wp_error($resultats)) {
-        echo '<div class="notice notice-error"><p>Erreur API : ' . esc_html($resultats->get_error_message()) . '</p></div>';
-        $results = []; // Pas de résultats à afficher
-    } elseif (empty($resultats)) {
-        echo '<div class="notice notice-warning"><p>Aucun résultat trouvé.</p></div>';
-        $results = [];
-    } else {
-        $results = sci_format_inpi_results($resultats);
+        // Vérification si $resultats est une erreur
+        if (is_wp_error($resultats)) {
+            echo '<div class="notice notice-error"><p>Erreur API : ' . esc_html($resultats->get_error_message()) . '</p></div>';
+            $results = []; // Pas de résultats à afficher
+        } elseif (empty($resultats)) {
+            echo '<div class="notice notice-warning"><p>Aucun résultat trouvé.</p></div>';
+            $results = [];
+        } else {
+            $results = sci_format_inpi_results($resultats);
 
-        //echo '<pre>';
-        //print_r($results);
-        //echo '</pre>';
+            //echo '<pre>';
+            //print_r($results);
+            //echo '</pre>';
 
-        //echo '<pre>Résultats bruts: ' . print_r($resultats, true) . '</pre>';
+            //echo '<pre>Résultats bruts: ' . print_r($resultats, true) . '</pre>';
+        }
     }
-}
 
 
 function lettre_laposte_handle_form_admin_my_istymo() {
@@ -150,8 +157,16 @@ function lettre_laposte_handle_form_admin_my_istymo() {
     // Log pour debug
     //lettre_laposte_log("Payload JSON : " . json_encode($payload));
 
-    // Ton token La Poste
-    $token = '108f6a48835ed848b3ec66c2d0afd568'; // à sécuriser en prod
+    // Récupère le token depuis la configuration sécurisée
+    $config_manager = sci_config_manager();
+    $token = $config_manager->get_laposte_token();
+
+    if (empty($token)) {
+        return [
+            'success' => false,
+            'error' => 'Token La Poste non configuré. Veuillez configurer vos API dans les paramètres.'
+        ];
+    }
 
     // Envoi API
     $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $token);
@@ -291,11 +306,17 @@ function lettre_laposte_handle_form_admin_my_istymo() {
 
 // --- Appel API INPI pour récupérer les entreprises SCI par code postal ---
 function sci_fetch_inpi_data($code_postal) {
-    // Token Bearer pour l'authentification à l'API (à gérer proprement en prod)
-    $token = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJleHAiOjE3NTAzMzg2ODYsInVzZXJUeXBlIjoiRk8iLCJjb25uZWN0aW9uVHlwZSI6IkFQSSIsInVzZXJJZCI6MTI3MDIxNSwidXNlcm5hbWUiOiJhaW5hZ3Vpc2VwcGVAZ21haWwuY29tIiwiZmlyc3RuYW1lIjoiQnJpbyBHdWlzZXBwZSIsImxhc3RuYW1lIjoiRU1NQU5VRUwiLCJhY2Nlc3NUb2tlbiI6ImEyY2I5Zjc1ZDQ0NGE1N2QzOGUwNjQ2ZjIzZDFhZmFmY2UzZDZmNTIiLCJyZWZyZXNoVG9rZW4iOiI1NWI5NTg4NmJmY2E1NmVmNjRhOGE2YTM3NDBmNTUxMjgzZmE4MmFlIiwiZXhwaXJlc0luIjo4NjQwMH0.XFBwwCeOm4MxLrqZt1mhVHH5w2TDeZwZX84tdD0Cldt3eV7yW5EJlTt4AjEjxqeR2JgJEsttvZiurUQnB3qJe-TdiD4hj5LzdYxx7H_UAuyqvSoDFCcqZELFcFxiiHPEAw9ThltqAvy8Eu5alG03wQV63KNb6kzGbuFmACcI7pOq-HXnwVu5H0QhMSepqEwNUXib0Gm99Sn46cVh50m7kzWthJUp4DUZ5h18oAR9_ERUDB1QBNggFfl7__FpEKDOvAs33dkFryxaVLpjqkOtebkFu2sxTSW9QL55qJglXeaLY_ghVOsmVrKuAsVJCd-Or6w2zrsc22xmfnvFAoGHuTu6z300XDZA8JimdqRx5SFGffIF3vFthlDqD7ZZswYinsCpOXSqAGXvMWB2MVXpKuJubyAVl9LY6qUQfw_G-FgMR2Da32FFW7gOlV1K1G1CFn6X14N3BiBPgcwuLw_RuSNqjim1cWUTSnLBc0IXFtAuSRRS7B7N5kczKY9xqMhd7f3aBWeg-CGVwgrJ0TvdpQPrnXCcDtTvp_ifuCSwMRdn5okknGADUPusgijtjLwbjFforfRz5lXNCKd4qL8JFHICZHFpZpJF57YHFCg8AEDStv61xpvDdN8e8SfS9AFTBMpv3FJ1VLo67MZqdRCNPTnqwJUEo5NPo3zIt-x0cjw';
+    // Récupère le token depuis la configuration sécurisée
+    $config_manager = sci_config_manager();
+    $token = $config_manager->get_inpi_token();
+    $api_url = $config_manager->get_inpi_api_url();
+
+    if (empty($token)) {
+        return new WP_Error('token_manquant', 'Token INPI non configuré. Veuillez configurer vos API dans les paramètres.');
+    }
 
     // URL de l'API avec le code postal passé en paramètre dynamique
-    $url = 'https://registre-national-entreprises.inpi.fr/api/companies?companyName=SCI&pageSize=100&zipCodes[]=' . urlencode($code_postal);
+    $url = $api_url . '?companyName=SCI&pageSize=100&zipCodes[]=' . urlencode($code_postal);
 
     // Configuration des headers avec authorization et accept JSON
     $args = [
@@ -423,7 +444,9 @@ function lettre_laposte_handle_form_admin_wrapper() {
 }
 
 function envoyer_lettre_via_api_la_poste_my_istymo($payload, $token) {
-    $api_url = 'https://sandbox-api.servicepostal.com/lettres';
+    // Récupère l'URL depuis la configuration sécurisée
+    $config_manager = sci_config_manager();
+    $api_url = $config_manager->get_laposte_api_url();
 
     $headers = [
         'apiKey'       => $token, // ✅ Authentification via apiKey
