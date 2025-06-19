@@ -82,6 +82,23 @@ function sci_afficher_panel() {
         echo '<div class="notice notice-error"><p><strong>⚠️ Configuration manquante :</strong> Veuillez configurer vos tokens API dans <a href="' . admin_url('admin.php?page=sci-config') . '">Configuration</a>.</p></div>';
     }
 
+    // Vérifier la configuration des données expéditeur
+    $campaign_manager = sci_campaign_manager();
+    $expedition_data = $campaign_manager->get_user_expedition_data();
+    $validation_errors = $campaign_manager->validate_expedition_data($expedition_data);
+    
+    if (!empty($validation_errors)) {
+        echo '<div class="notice notice-warning">';
+        echo '<p><strong>⚠️ Configuration expéditeur incomplète :</strong></p>';
+        echo '<ul>';
+        foreach ($validation_errors as $error) {
+            echo '<li>' . esc_html($error) . '</li>';
+        }
+        echo '</ul>';
+        echo $campaign_manager->get_configuration_help();
+        echo '</div>';
+    }
+
     // Si un formulaire POST a été envoyé avec un code postal sélectionné
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['codePostal'])) {
         error_log('POST reçu: ' . print_r($_POST, true));
@@ -365,8 +382,9 @@ function sci_envoyer_lettre_laposte_ajax() {
     $expedition_data = $campaign_manager->get_user_expedition_data();
     
     // Vérifier que les données essentielles sont présentes
-    if (empty($expedition_data['prenom']) && empty($expedition_data['nom']) && empty($expedition_data['nom_societe'])) {
-        wp_send_json_error('Données expéditeur incomplètes. Veuillez compléter votre profil utilisateur.');
+    $validation_errors = $campaign_manager->validate_expedition_data($expedition_data);
+    if (!empty($validation_errors)) {
+        wp_send_json_error('Données expéditeur incomplètes : ' . implode(', ', $validation_errors));
         return;
     }
     

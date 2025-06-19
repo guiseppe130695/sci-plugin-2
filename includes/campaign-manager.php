@@ -244,6 +244,7 @@ class SCI_Campaign_Manager {
     
     /**
      * Récupère les données utilisateur pour l'expédition
+     * Compatible WordPress + WooCommerce + ACF
      */
     public function get_user_expedition_data($user_id = null) {
         if (!$user_id) {
@@ -252,17 +253,186 @@ class SCI_Campaign_Manager {
         
         $user = get_user_by('ID', $user_id);
         
-        return array(
-            "civilite" => get_field('civilite_user', 'user_' . $user_id) ?: 'M.',
-            "prenom" => $user->first_name ?: get_field('prenom_user', 'user_' . $user_id) ?: '',
-            "nom" => $user->last_name ?: get_field('nom_user', 'user_' . $user_id) ?: '',
-            "nom_societe" => get_field('societe_user', 'user_' . $user_id) ?: '',
-            "adresse_ligne1" => get_field('adresse_user', 'user_' . $user_id) ?: '',
-            "adresse_ligne2" => get_field('adresse2_user', 'user_' . $user_id) ?: '',
-            "code_postal" => get_field('cp_user', 'user_' . $user_id) ?: '',
-            "ville" => get_field('ville_user', 'user_' . $user_id) ?: '',
-            "pays" => "FRANCE",
-        );
+        // Récupération des données depuis différentes sources
+        $data = array();
+        
+        // === CIVILITÉ ===
+        $data['civilite'] = $this->get_user_field($user_id, [
+            'civilite_user',           // ACF personnalisé
+            'billing_title',           // WooCommerce
+            'user_title'              // WordPress standard
+        ], 'M.');
+        
+        // === PRÉNOM ===
+        $data['prenom'] = $this->get_user_field($user_id, [
+            $user->first_name,         // WordPress natif
+            'prenom_user',             // ACF personnalisé
+            'billing_first_name',      // WooCommerce
+            'first_name'               // WordPress meta
+        ]);
+        
+        // === NOM ===
+        $data['nom'] = $this->get_user_field($user_id, [
+            $user->last_name,          // WordPress natif
+            'nom_user',                // ACF personnalisé
+            'billing_last_name',       // WooCommerce
+            'last_name'                // WordPress meta
+        ]);
+        
+        // === SOCIÉTÉ ===
+        $data['nom_societe'] = $this->get_user_field($user_id, [
+            'societe_user',            // ACF personnalisé
+            'billing_company',         // WooCommerce
+            'company',                 // WordPress meta
+            'user_company'             // Autre champ possible
+        ]);
+        
+        // === ADRESSE LIGNE 1 ===
+        $data['adresse_ligne1'] = $this->get_user_field($user_id, [
+            'adresse_user',            // ACF personnalisé
+            'billing_address_1',       // WooCommerce
+            'address_1',               // WordPress meta
+            'user_address'             // Autre champ possible
+        ]);
+        
+        // === ADRESSE LIGNE 2 ===
+        $data['adresse_ligne2'] = $this->get_user_field($user_id, [
+            'adresse2_user',           // ACF personnalisé
+            'billing_address_2',       // WooCommerce
+            'address_2'                // WordPress meta
+        ]);
+        
+        // === CODE POSTAL ===
+        $data['code_postal'] = $this->get_user_field($user_id, [
+            'cp_user',                 // ACF personnalisé
+            'billing_postcode',        // WooCommerce
+            'postcode',                // WordPress meta
+            'user_postcode'            // Autre champ possible
+        ]);
+        
+        // === VILLE ===
+        $data['ville'] = $this->get_user_field($user_id, [
+            'ville_user',              // ACF personnalisé
+            'billing_city',            // WooCommerce
+            'city',                    // WordPress meta
+            'user_city'                // Autre champ possible
+        ]);
+        
+        // === PAYS ===
+        $data['pays'] = $this->get_user_field($user_id, [
+            'pays_user',               // ACF personnalisé
+            'billing_country',         // WooCommerce
+            'country'                  // WordPress meta
+        ], 'FRANCE');
+        
+        // Log des données récupérées pour debug
+        lettre_laposte_log("=== DONNÉES EXPÉDITEUR RÉCUPÉRÉES ===");
+        lettre_laposte_log("User ID: $user_id");
+        lettre_laposte_log("Données: " . json_encode($data, JSON_PRETTY_PRINT));
+        
+        // Validation des champs obligatoires
+        $required_fields = ['adresse_ligne1', 'code_postal', 'ville'];
+        $missing_fields = [];
+        
+        foreach ($required_fields as $field) {
+            if (empty($data[$field])) {
+                $missing_fields[] = $field;
+            }
+        }
+        
+        // Validation nom/prénom OU société
+        if (empty($data['prenom']) && empty($data['nom']) && empty($data['nom_societe'])) {
+            $missing_fields[] = 'nom/prénom ou société';
+        }
+        
+        if (!empty($missing_fields)) {
+            lettre_laposte_log("❌ CHAMPS MANQUANTS: " . implode(', ', $missing_fields));
+        } else {
+            lettre_laposte_log("✅ TOUTES LES DONNÉES REQUISES SONT PRÉSENTES");
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * Récupère une valeur depuis plusieurs sources possibles
+     */
+    private function get_user_field($user_id, $field_names, $default = '') {
+        if (!is_array($field_names)) {
+            $field_names = [$field_names];
+        }
+        
+        foreach ($field_names as $field_name) {
+            // Si c'est déjà une valeur (pas un nom de champ)
+            if (!empty($field_name) && !is_string($field_name)) {
+                return $field_name;
+            }
+            
+            if (empty($field_name)) {
+                continue;
+            }
+            
+            // Essayer ACF en premier
+            if (function_exists('get_field')) {
+                $value = get_field($field_name, 'user_' . $user_id);
+                if (!empty($value)) {
+                    return $value;
+                }
+            }
+            
+            // Essayer les meta WordPress/WooCommerce
+            $value = get_user_meta($user_id, $field_name, true);
+            if (!empty($value)) {
+                return $value;
+            }
+        }
+        
+        return $default;
+    }
+    
+    /**
+     * Valide les données d'expédition
+     */
+    public function validate_expedition_data($data) {
+        $errors = [];
+        
+        // Vérifier les champs obligatoires
+        if (empty($data['adresse_ligne1'])) {
+            $errors[] = 'Adresse ligne 1 manquante';
+        }
+        
+        if (empty($data['code_postal'])) {
+            $errors[] = 'Code postal manquant';
+        }
+        
+        if (empty($data['ville'])) {
+            $errors[] = 'Ville manquante';
+        }
+        
+        // Vérifier nom/prénom OU société
+        if (empty($data['prenom']) && empty($data['nom']) && empty($data['nom_societe'])) {
+            $errors[] = 'Nom/prénom ou nom de société requis';
+        }
+        
+        return $errors;
+    }
+    
+    /**
+     * Affiche un message d'aide pour configurer les champs utilisateur
+     */
+    public function get_configuration_help() {
+        return "
+        <div class='notice notice-info'>
+            <h4>🔧 Configuration des données expéditeur</h4>
+            <p>Le système recherche automatiquement vos données dans cet ordre :</p>
+            <ul>
+                <li><strong>Nom/Prénom :</strong> Profil WordPress → Champs ACF → WooCommerce</li>
+                <li><strong>Adresse :</strong> Champs ACF → WooCommerce → WordPress</li>
+                <li><strong>Société :</strong> Champs ACF → WooCommerce</li>
+            </ul>
+            <p><strong>Champs ACF supportés :</strong> civilite_user, prenom_user, nom_user, societe_user, adresse_user, adresse2_user, cp_user, ville_user, pays_user</p>
+            <p><strong>Champs WooCommerce supportés :</strong> billing_first_name, billing_last_name, billing_company, billing_address_1, billing_address_2, billing_postcode, billing_city, billing_country</p>
+        </div>";
     }
 }
 
