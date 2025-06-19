@@ -388,22 +388,12 @@ function sci_envoyer_lettre_laposte_ajax() {
         return;
     }
     
-    // Préparer le payload pour l'API La Poste
-    $payload = [
-        "type_affranchissement" => "lrar",
-        "type_enveloppe" => "auto",
-        "enveloppe" => "fenetre",
-        "couleur" => "nb",
-        "recto_verso" => "rectoverso",
-        "placement_adresse" => "insertion_page_adresse",
-        "surimpression_adresses_document" => true,
-        "impression_expediteur" => false,
-        "ar_scan" => true,
-
-        // Accusé de réception
-        "ar_expediteur_champ1" => $expedition_data['prenom'],
-        "ar_expediteur_champ2" => $expedition_data['nom'],
-
+    // Récupérer les paramètres configurés depuis le gestionnaire de configuration
+    $config_manager = sci_config_manager();
+    $laposte_params = $config_manager->get_laposte_payload_params();
+    
+    // Préparer le payload pour l'API La Poste avec les paramètres dynamiques
+    $payload = array_merge($laposte_params, [
         // Adresse expéditeur (récupérée depuis le profil utilisateur)
         "adresse_expedition" => $expedition_data,
 
@@ -425,10 +415,9 @@ function sci_envoyer_lettre_laposte_ajax() {
             "format" => "pdf",
             "contenu_base64" => $pdf_base64,
         ],
-    ];
+    ]);
 
     // Récupérer le token depuis la configuration sécurisée
-    $config_manager = sci_config_manager();
     $token = $config_manager->get_laposte_token();
 
     if (empty($token)) {
