@@ -2,7 +2,7 @@
 /*
 Plugin Name: SCI
 Description: Plugin personnalisé SCI avec un panneau admin et un sélecteur de codes postaux.
-Version: 1.2
+Version: 1.3
 Author: Brio Guiseppe
 */
 
@@ -207,7 +207,7 @@ function sci_afficher_panel() {
 
 <!-- Popup lettre avec paiement intégré -->
 <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:10000; justify-content:center; align-items:center;">
-  <div style="background:#fff; padding:20px; width:500px; max-height:80vh; overflow-y:auto; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3);">
+  <div style="background:#fff; padding:20px; width:600px; max-width:90vw; max-height:90vh; overflow-y:auto; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3);">
 
     <!-- Step 1 : Liste des SCI sélectionnées -->
     <div class="step" id="step-1">
@@ -385,7 +385,8 @@ function sci_enqueue_admin_scripts() {
         'ajax_url' => admin_url('admin-ajax.php'),
         'nonce' => wp_create_nonce('sci_campaign_nonce'),
         'unit_price' => $woocommerce_integration->get_unit_price(),
-        'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready()
+        'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready(),
+        'campaigns_url' => admin_url('admin.php?page=sci-campaigns')
     ));
 
     // Facultatif : ajouter ton CSS si besoin

@@ -13,6 +13,8 @@ class SCI_WooCommerce_Integration {
         add_action('init', array($this, 'init'));
         add_action('wp_ajax_sci_create_order', array($this, 'create_order_ajax'));
         add_action('wp_ajax_nopriv_sci_create_order', array($this, 'create_order_ajax'));
+        add_action('wp_ajax_sci_check_order_status', array($this, 'check_order_status_ajax'));
+        add_action('wp_ajax_nopriv_sci_check_order_status', array($this, 'check_order_status_ajax'));
         
         // Hook pour traiter les commandes payées
         add_action('woocommerce_order_status_completed', array($this, 'process_paid_campaign'));
@@ -20,6 +22,10 @@ class SCI_WooCommerce_Integration {
         
         // Hook pour les paiements instantanés (cartes, PayPal, etc.)
         add_action('woocommerce_payment_complete', array($this, 'process_paid_campaign'));
+        
+        // Hooks pour personnaliser le checkout embarqué
+        add_action('wp_head', array($this, 'add_checkout_scripts'));
+        add_filter('woocommerce_checkout_redirect_empty_cart', array($this, 'prevent_empty_cart_redirect'));
     }
     
     public function init() {
@@ -30,6 +36,105 @@ class SCI_WooCommerce_Integration {
         if (!$this->product_id || !get_post($this->product_id)) {
             $this->create_sci_product();
         }
+    }
+    
+    /**
+     * Ajoute des scripts pour améliorer l'expérience checkout embarqué
+     */
+    public function add_checkout_scripts() {
+        if (is_wc_endpoint_url('order-pay') || is_checkout()) {
+            ?>
+            <script>
+            // Script pour communiquer avec la fenêtre parent (popup)
+            document.addEventListener('DOMContentLoaded', function() {
+                // Détecter si on est dans un iframe
+                if (window.parent !== window) {
+                    // Écouter les changements de statut de commande
+                    const observer = new MutationObserver(function(mutations) {
+                        mutations.forEach(function(mutation) {
+                            // Détecter les messages de succès WooCommerce
+                            if (mutation.addedNodes) {
+                                mutation.addedNodes.forEach(function(node) {
+                                    if (node.nodeType === 1) {
+                                        // Succès de paiement
+                                        if (node.classList && (node.classList.contains('woocommerce-message') || 
+                                            node.classList.contains('woocommerce-order-received'))) {
+                                            window.parent.postMessage({
+                                                type: 'woocommerce_checkout_success',
+                                                message: 'Paiement confirmé'
+                                            }, '*');
+                                        }
+                                        
+                                        // Erreur de paiement
+                                        if (node.classList && (node.classList.contains('woocommerce-error') || 
+                                            node.classList.contains('woocommerce-notice--error'))) {
+                                            window.parent.postMessage({
+                                                type: 'woocommerce_checkout_error',
+                                                message: node.textContent || 'Erreur de paiement'
+                                            }, '*');
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    });
+                    
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true
+                    });
+                    
+                    // Détecter la redirection vers la page de confirmation
+                    if (window.location.href.includes('order-received')) {
+                        window.parent.postMessage({
+                            type: 'woocommerce_checkout_success',
+                            message: 'Commande confirmée'
+                        }, '*');
+                    }
+                }
+            });
+            </script>
+            <style>
+            /* Styles pour améliorer l'affichage dans l'iframe */
+            body.woocommerce-checkout,
+            body.woocommerce-order-pay {
+                margin: 0 !important;
+                padding: 10px !important;
+            }
+            
+            .woocommerce-checkout .col2-set,
+            .woocommerce-order-pay .col2-set {
+                width: 100% !important;
+            }
+            
+            /* Masquer certains éléments non nécessaires dans l'iframe */
+            .site-header,
+            .site-footer,
+            .breadcrumb,
+            .woocommerce-breadcrumb {
+                display: none !important;
+            }
+            
+            /* Améliorer l'affichage du formulaire */
+            .woocommerce-checkout-payment {
+                background: #f9f9f9;
+                padding: 15px;
+                border-radius: 5px;
+                margin-top: 15px;
+            }
+            </style>
+            <?php
+        }
+    }
+    
+    /**
+     * Empêche la redirection automatique si le panier est vide (pour les commandes directes)
+     */
+    public function prevent_empty_cart_redirect($redirect) {
+        if (isset($_GET['order-pay']) || isset($_GET['embedded'])) {
+            return false;
+        }
+        return $redirect;
     }
     
     /**
@@ -135,15 +240,53 @@ class SCI_WooCommerce_Integration {
             return;
         }
         
-        // Retourner l'URL de paiement
+        // Retourner l'URL de paiement avec paramètre embedded
         $order = wc_get_order($order_id);
-        $checkout_url = $order->get_checkout_payment_url();
+        $checkout_url = $order->get_checkout_payment_url() . '&embedded=1';
         
         wp_send_json_success(array(
             'order_id' => $order_id,
             'checkout_url' => $checkout_url,
             'total' => $order->get_total(),
             'sci_count' => $sci_count
+        ));
+    }
+    
+    /**
+     * AJAX - Vérifie le statut d'une commande
+     */
+    public function check_order_status_ajax() {
+        // Vérifications de sécurité
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'sci_campaign_nonce')) {
+            wp_send_json_error('Nonce invalide');
+            return;
+        }
+        
+        $order_id = intval($_POST['order_id'] ?? 0);
+        if (!$order_id) {
+            wp_send_json_error('ID de commande invalide');
+            return;
+        }
+        
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            wp_send_json_error('Commande introuvable');
+            return;
+        }
+        
+        // Vérifier que l'utilisateur est propriétaire de la commande
+        if ($order->get_customer_id() !== get_current_user_id()) {
+            wp_send_json_error('Accès non autorisé');
+            return;
+        }
+        
+        $status = $order->get_status();
+        $is_paid = in_array($status, ['processing', 'completed', 'on-hold']);
+        
+        wp_send_json_success(array(
+            'status' => $is_paid ? 'paid' : 'pending',
+            'order_status' => $status,
+            'total' => $order->get_total()
         ));
     }
     
