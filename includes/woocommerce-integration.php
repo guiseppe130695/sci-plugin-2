@@ -646,35 +646,55 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
     }
     
     // Générer les PDFs
-    require_once plugin_dir_path(__FILE__) . '../lib/tcpdf/tcpdf.php';
+    if (!class_exists('TCPDF')) {
+        require_once plugin_dir_path(__FILE__) . '../lib/tcpdf/tcpdf.php';
+    }
     
     $upload_dir = wp_upload_dir();
+    $pdf_dir = $upload_dir['basedir'] . '/campagnes/';
+    
+    // Créer le dossier s'il n'existe pas
+    if (!file_exists($pdf_dir)) {
+        wp_mkdir_p($pdf_dir);
+    }
+    
     $pdf_files = array();
     
     foreach ($campaign_data['entries'] as $entry) {
-        $nom = $entry['dirigeant'] ?? 'Dirigeant';
-        $texte = str_replace('[NOM]', $nom, $campaign_data['content']);
-        
-        $pdf = new TCPDF();
-        $pdf->AddPage();
-        $pdf->SetFont('helvetica', '', 12);
-        $pdf->Write(0, $texte, '', 0, 'L', true);
-        
-        $filename = sanitize_title($entry['denomination'] . '-' . $nom) . '.pdf';
-        $filepath = $upload_dir['basedir'] . '/campagnes/' . $filename;
-        $fileurl = $upload_dir['baseurl'] . '/campagnes/' . $filename;
-        
-        if (!file_exists(dirname($filepath))) {
-            mkdir(dirname($filepath), 0755, true);
+        try {
+            $nom = $entry['dirigeant'] ?? 'Dirigeant';
+            $texte = str_replace('[NOM]', $nom, $campaign_data['content']);
+            
+            $pdf = new TCPDF();
+            $pdf->SetCreator('SCI Plugin');
+            $pdf->SetAuthor('SCI Plugin');
+            $pdf->SetTitle('Lettre pour ' . ($entry['denomination'] ?? 'SCI'));
+            
+            $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
+            $pdf->SetMargins(20, 20, 20);
+            $pdf->SetAutoPageBreak(TRUE, 25);
+            
+            $pdf->AddPage();
+            $pdf->SetFont('helvetica', '', 12);
+            $pdf->writeHTML(nl2br(htmlspecialchars($texte)), true, false, true, false, '');
+            
+            $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time()) . '.pdf';
+            $filepath = $pdf_dir . $filename;
+            
+            $pdf->Output($filepath, 'F');
+            
+            if (file_exists($filepath)) {
+                $pdf_files[] = array(
+                    'path' => $filepath,
+                    'entry' => $entry
+                );
+                
+                lettre_laposte_log("PDF généré en arrière-plan : $filename pour {$entry['denomination']}");
+            }
+            
+        } catch (Exception $e) {
+            lettre_laposte_log("Erreur génération PDF arrière-plan pour {$entry['denomination']}: " . $e->getMessage());
         }
-        
-        $pdf->Output($filepath, 'F');
-        
-        $pdf_files[] = array(
-            'url' => $fileurl,
-            'path' => $filepath,
-            'entry' => $entry
-        );
     }
     
     // Envoyer les lettres une par une
@@ -726,6 +746,7 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
                 $response['uid'] ?? null
             );
             $success_count++;
+            lettre_laposte_log("✅ Lettre envoyée en arrière-plan pour {$entry['denomination']} - UID: " . ($response['uid'] ?? 'N/A'));
         } else {
             $error_msg = isset($response['message']) ? json_encode($response['message']) : ($response['error'] ?? 'Erreur inconnue');
             $campaign_manager->update_letter_status(
@@ -736,10 +757,13 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
                 $error_msg
             );
             $error_count++;
+            lettre_laposte_log("❌ Erreur envoi arrière-plan pour {$entry['denomination']}: $error_msg");
         }
         
         // Nettoyer le fichier PDF temporaire
-        unlink($pdf_data['path']);
+        if (file_exists($pdf_data['path'])) {
+            unlink($pdf_data['path']);
+        }
         
         // Pause entre les envois
         sleep(2);
@@ -756,6 +780,10 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
     $order->update_meta_data('_sci_campaign_success_count', $success_count);
     $order->update_meta_data('_sci_campaign_error_count', $error_count);
     $order->save();
+    
+    lettre_laposte_log("=== CAMPAGNE TERMINÉE ===");
+    lettre_laposte_log("Commande #$order_id - Campagne #$campaign_id");
+    lettre_laposte_log("Succès: $success_count, Erreurs: $error_count");
 }
 
 /**

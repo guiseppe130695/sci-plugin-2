@@ -398,6 +398,9 @@ function sci_enqueue_admin_scripts() {
         'campaigns_url' => admin_url('admin.php?page=sci-campaigns')
     ));
 
+    // Localisation pour lettre.js (ajaxurl)
+    wp_localize_script('sci-lettre-js', 'ajaxurl', admin_url('admin-ajax.php'));
+
     // Facultatif : ajouter ton CSS si besoin
     wp_enqueue_style(
         'sci-style',
@@ -916,18 +919,26 @@ function sci_logs_page() {
     }
 }
 
+// --- FONCTION AJAX POUR GÉNÉRER LES PDFS (CORRIGÉE) ---
 add_action('wp_ajax_sci_generer_pdfs', 'sci_generer_pdfs');
-add_action('wp_ajax_nopriv_sci_generer_pdfs', 'sci_generer_pdfs'); // si non-connecté
-
+add_action('wp_ajax_nopriv_sci_generer_pdfs', 'sci_generer_pdfs');
 
 function sci_generer_pdfs() {
+    // Vérification de sécurité
+    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'sci_campaign_nonce')) {
+        wp_send_json_error('Nonce invalide');
+        return;
+    }
+
     if (!isset($_POST['data'])) {
         wp_send_json_error("Aucune donnée reçue.");
+        return;
     }
 
     $data = json_decode(stripslashes($_POST['data']), true);
     if (!isset($data['entries']) || !is_array($data['entries'])) {
         wp_send_json_error("Entrées invalides.");
+        return;
     }
 
     // Créer la campagne en base de données
@@ -939,45 +950,87 @@ function sci_generer_pdfs() {
         return;
     }
 
-    // Inclure TCPDF ou FPDF
-    require_once plugin_dir_path(__FILE__) . 'lib/tcpdf/tcpdf.php';
+    // Inclure TCPDF
+    if (!class_exists('TCPDF')) {
+        require_once plugin_dir_path(__FILE__) . 'lib/tcpdf/tcpdf.php';
+    }
 
     $upload_dir = wp_upload_dir();
+    $pdf_dir = $upload_dir['basedir'] . '/campagnes/';
+    $pdf_url_base = $upload_dir['baseurl'] . '/campagnes/';
+    
+    // Créer le dossier s'il n'existe pas
+    if (!file_exists($pdf_dir)) {
+        wp_mkdir_p($pdf_dir);
+    }
+
     $pdf_links = [];
 
     foreach ($data['entries'] as $entry) {
-        $nom = $entry['dirigeant'] ?? 'Dirigeant';
-        $texte = str_replace('[NOM]', $nom, $data['content']);
+        try {
+            $nom = $entry['dirigeant'] ?? 'Dirigeant';
+            $texte = str_replace('[NOM]', $nom, $data['content']);
 
-        $pdf = new TCPDF();
-        $pdf->AddPage();
-        $pdf->SetFont('helvetica', '', 12);
-        $pdf->Write(0, $texte, '', 0, 'L', true);
+            // Créer le PDF avec TCPDF
+            $pdf = new TCPDF();
+            $pdf->SetCreator('SCI Plugin');
+            $pdf->SetAuthor('SCI Plugin');
+            $pdf->SetTitle('Lettre pour ' . ($entry['denomination'] ?? 'SCI'));
+            $pdf->SetSubject('Lettre SCI');
+            
+            // Paramètres de page
+            $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
+            $pdf->SetMargins(20, 20, 20);
+            $pdf->SetAutoPageBreak(TRUE, 25);
+            $pdf->setImageScale(PDF_IMAGE_SCALE_RATIO);
+            
+            // Ajouter une page
+            $pdf->AddPage();
+            
+            // Définir la police
+            $pdf->SetFont('helvetica', '', 12);
+            
+            // Ajouter le contenu
+            $pdf->writeHTML(nl2br(htmlspecialchars($texte)), true, false, true, false, '');
 
-        $filename = sanitize_title($entry['denomination'] . '-' . $nom) . '.pdf';
-        $filepath = $upload_dir['basedir'] . '/campagnes/' . $filename;
-        $fileurl  = $upload_dir['baseurl'] . '/campagnes/' . $filename;
+            // Générer le nom de fichier sécurisé
+            $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time()) . '.pdf';
+            $filepath = $pdf_dir . $filename;
+            $fileurl = $pdf_url_base . $filename;
 
-        if (!file_exists(dirname($filepath))) {
-            mkdir(dirname($filepath), 0755, true);
+            // Sauvegarder le PDF
+            $pdf->Output($filepath, 'F');
+
+            // Vérifier que le fichier a été créé
+            if (file_exists($filepath)) {
+                $pdf_links[] = [
+                    'url' => $fileurl,
+                    'name' => $filename,
+                    'path' => $filepath
+                ];
+                
+                lettre_laposte_log("PDF généré avec succès : $filename pour {$entry['denomination']}");
+            } else {
+                lettre_laposte_log("Erreur : PDF non créé pour {$entry['denomination']}");
+            }
+
+        } catch (Exception $e) {
+            lettre_laposte_log("Erreur lors de la génération PDF pour {$entry['denomination']}: " . $e->getMessage());
         }
-
-        $pdf->Output($filepath, 'F');
-
-        $pdf_links[] = [
-            'url' => $fileurl,
-            'name' => $filename
-        ];
     }
+
+    if (empty($pdf_links)) {
+        wp_send_json_error('Aucun PDF n\'a pu être généré');
+        return;
+    }
+
+    lettre_laposte_log("Génération terminée : " . count($pdf_links) . " PDFs créés sur " . count($data['entries']) . " demandés");
 
     wp_send_json_success([
         'files' => $pdf_links,
-        'campaign_id' => $campaign_id
+        'campaign_id' => $campaign_id,
+        'message' => count($pdf_links) . ' PDFs générés avec succès'
     ]);
 }
-
-add_action('admin_enqueue_scripts', function () {
-    wp_localize_script('sci-lettre-js', 'ajaxurl', admin_url('admin-ajax.php'));
-});
 
 ?>
