@@ -13,9 +13,14 @@ if (!defined('ABSPATH')) exit;
  * Fonction utilitaire pour logger les actions de lettres
  */
 function lettre_laposte_log($message) {
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('[SCI Lettre] ' . $message);
+    $upload_dir = wp_upload_dir();
+    $log_dir = $upload_dir['basedir'] . '/lettre-laposte';
+    if (!file_exists($log_dir)) {
+        wp_mkdir_p($log_dir);
     }
+    $logfile = $log_dir . '/logs.txt';
+    $datetime = date('Y-m-d H:i:s');
+    error_log("[$datetime] $message\n", 3, $logfile);
 }
 
 /**
@@ -51,5 +56,41 @@ function prepare_expedition_data($user_data = null) {
         'adresse' => $user_data['adresse'] ?? '',
         'code_postal' => $user_data['code_postal'] ?? '',
         'ville' => $user_data['ville'] ?? '',
+    ];
+}
+
+/**
+ * Fonction pour formater l'adresse destinataire pour l'API La Poste
+ */
+function format_destination_address($entry) {
+    return [
+        "civilite" => "", // Pas de civilité pour les SCI
+        "prenom" => "",   // Pas de prénom pour les SCI
+        "nom" => $entry['dirigeant'] ?? '',
+        "nom_societe" => $entry['denomination'] ?? '',
+        "adresse_ligne1" => $entry['adresse'] ?? '',
+        "adresse_ligne2" => "",
+        "code_postal" => $entry['code_postal'] ?? '',
+        "ville" => $entry['ville'] ?? '',
+        "pays" => "FRANCE",
+    ];
+}
+
+/**
+ * Fonction pour formater l'adresse expéditeur depuis le profil utilisateur
+ */
+function format_expedition_address($user_id) {
+    $current_user = get_user_by('ID', $user_id);
+    
+    return [
+        "civilite" => get_field('civilite_user', 'user_' . $user_id) ?? 'M.',
+        "prenom" => $current_user->first_name ?? '',
+        "nom" => $current_user->last_name ?? '',
+        "nom_societe" => get_field('societe_user', 'user_' . $user_id) ?? '',
+        "adresse_ligne1" => get_field('adresse_user', 'user_' . $user_id) ?? '',
+        "adresse_ligne2" => get_field('adresse2_user', 'user_' . $user_id) ?? '',
+        "code_postal" => get_field('cp_user', 'user_' . $user_id) ?? '',
+        "ville" => get_field('ville_user', 'user_' . $user_id) ?? '',
+        "pays" => "FRANCE",
     ];
 }

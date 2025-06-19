@@ -86,115 +86,6 @@ function sci_afficher_panel() {
         }
     }
 
-
-function lettre_laposte_handle_form_admin_my_istymo() {
-    //lettre_laposte_log("Début traitement formulaire");
-
-    // Vérifie l'upload du PDF
-    if (!isset($_FILES['lettre_pdf']) || $_FILES['lettre_pdf']['error'] !== UPLOAD_ERR_OK) {
-        return ['success' => false, 'error' => 'Erreur lors de l\'upload du fichier PDF.'];
-    }
-
-    // Vérifie le type MIME
-    $pdf_tmp_path = $_FILES['lettre_pdf']['tmp_name'];
-    $pdf_mime = mime_content_type($pdf_tmp_path);
-    if ($pdf_mime !== 'application/pdf') {
-        return ['success' => false, 'error' => 'Le fichier doit être un PDF valide.'];
-    }
-
-    // Convertit le PDF en base64
-    $pdf_base64 = base64_encode(file_get_contents($pdf_tmp_path));
-
-    // Prépare le payload avec les données du formulaire
-    $payload = [
-        "type_affranchissement" => "lrar",
-        "type_enveloppe" => "auto",
-        "enveloppe" => "fenetre",
-        "couleur" => "nb",
-        "recto_verso" => "rectoverso",
-        "placement_adresse" => "insertion_page_adresse",
-        "surimpression_adresses_document" => true,
-        "impression_expediteur" => false,
-        "ar_scan" => true,
-
-        // Accusé de réception : on utilise prénom + nom expéditeur
-        "ar_expediteur_champ1" => sanitize_text_field($_POST['exp_prenom'] ?? ''),
-        "ar_expediteur_champ2" => sanitize_text_field($_POST['exp_nom'] ?? ''),
-
-        // Adresse expéditeur (Étape 1)
-        "adresse_expedition" => [
-            "civilite" => "", // Pas de champ prévu dans le formulaire actuel
-            "prenom" => sanitize_text_field($_POST['exp_prenom'] ?? ''),
-            "nom" => sanitize_text_field($_POST['exp_nom'] ?? ''),
-            "nom_societe" => "", // Pas de champ société pour l'expéditeur
-            "adresse_ligne1" => sanitize_text_field($_POST['exp_adresse'] ?? ''),
-            "adresse_ligne2" => "",
-            "code_postal" => sanitize_text_field($_POST['exp_cp'] ?? ''),
-            "ville" => sanitize_text_field($_POST['exp_ville'] ?? ''),
-            "pays" => "FRANCE",
-        ],
-
-        // Adresse destinataire (Étape 2)
-        "adresse_destination" => [
-            "civilite" => "", // Pas de civilité ni prénom pour destinataire actuellement
-            "prenom" => "",   // À ajouter si tu veux le gérer
-            "nom" => sanitize_text_field($_POST['dest_nom'] ?? ''),
-            "nom_societe" => sanitize_text_field($_POST['dest_societe'] ?? ''),
-            "adresse_ligne1" => sanitize_text_field($_POST['dest_adresse1'] ?? ''),
-            "adresse_ligne2" => "",
-            "code_postal" => sanitize_text_field($_POST['dest_cp'] ?? ''),
-            "ville" => sanitize_text_field($_POST['dest_ville'] ?? ''),
-            "pays" => "FRANCE",
-        ],
-
-        // PDF encodé
-        "fichier" => [
-            "format" => "pdf",
-            "contenu_base64" => $pdf_base64,
-        ],
-    ];
-
-    // Log pour debug
-    //lettre_laposte_log("Payload JSON : " . json_encode($payload));
-
-    // Récupère le token depuis la configuration sécurisée
-    $config_manager = sci_config_manager();
-    $token = $config_manager->get_laposte_token();
-
-    if (empty($token)) {
-        return [
-            'success' => false,
-            'error' => 'Token La Poste non configuré. Veuillez configurer vos API dans les paramètres.'
-        ];
-    }
-
-    // Envoi API
-    $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $token);
-
-    // Traitement réponse
-    if ($response['success']) {
-        $uid = $response['uid'] ?? 'non disponible';
-        return [
-            'success' => true,
-            'message' => 'Lettre envoyée avec succès. UID : ' . esc_html($uid),
-        ];
-    } else {
-        $error_msg = 'Erreur API : ';
-        if (isset($response['message']) && is_array($response['message'])) {
-            $error_msg .= json_encode($response['message']);
-        } elseif (isset($response['error'])) {
-            $error_msg .= $response['error'];
-        } else {
-            $error_msg .= 'Erreur inconnue';
-        }
-
-        return [
-            'success' => false,
-            'error' => $error_msg,
-        ];
-    }
-}
-
     
     // Affichage du formulaire et des résultats
     ?>
@@ -288,7 +179,7 @@ function lettre_laposte_handle_form_admin_my_istymo() {
       <input type="text" id="campaign-title" style="width:100%; margin-bottom:10px;" required><br>
 
       <label for="campaign-content">Contenu de la lettre :</label><br>
-      <textarea id="campaign-content" style="width:100%; height:120px;" required></textarea><br><br>
+      <textarea id="campaign-content" style="width:100%; height:120px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant"></textarea><br><br>
 
       <button id="send-campaign" class="button button-primary">Envoyer la campagne</button>
       <button id="back-to-step-1" class="button" style="margin-left:10px;">Précédent</button>
@@ -427,19 +318,112 @@ function sci_enqueue_admin_scripts() {
     );
 }
 
-// Déclencher la fonction quand le formulaire est soumis via AJAX
-add_action('wp_ajax_sci_envoyer_lettre', 'lettre_laposte_handle_form_admin_wrapper');
-add_action('wp_ajax_nopriv_sci_envoyer_lettre', 'lettre_laposte_handle_form_admin_wrapper');
-add_action('wp_ajax_sci_envoyer_lettre', 'lettre_laposte_handle_form_admin');
+// --- NOUVELLE FONCTION AJAX POUR ENVOYER UNE LETTRE VIA L'API LA POSTE ---
+add_action('wp_ajax_sci_envoyer_lettre_laposte', 'sci_envoyer_lettre_laposte_ajax');
+add_action('wp_ajax_nopriv_sci_envoyer_lettre_laposte', 'sci_envoyer_lettre_laposte_ajax');
 
-// Le wrapper pour retourner un résultat JSON à JS
-function lettre_laposte_handle_form_admin_wrapper() {
-    $result = lettre_laposte_handle_form_admin_my_istymo();
+function sci_envoyer_lettre_laposte_ajax() {
+    // Vérification des données reçues
+    if (!isset($_POST['entry']) || !isset($_POST['pdf_base64'])) {
+        wp_send_json_error('Données manquantes');
+        return;
+    }
 
-    if ($result['success']) {
-        wp_send_json_success($result['message']);
+    $entry = json_decode(stripslashes($_POST['entry']), true);
+    $pdf_base64 = $_POST['pdf_base64'];
+    $campaign_title = sanitize_text_field($_POST['campaign_title'] ?? '');
+
+    if (!$entry || !$pdf_base64) {
+        wp_send_json_error('Données invalides');
+        return;
+    }
+
+    // Récupérer les données de l'expéditeur (utilisateur courant)
+    $current_user = wp_get_current_user();
+    $user_meta = get_user_meta($current_user->ID);
+    
+    // Préparer le payload pour l'API La Poste
+    $payload = [
+        "type_affranchissement" => "lrar",
+        "type_enveloppe" => "auto",
+        "enveloppe" => "fenetre",
+        "couleur" => "nb",
+        "recto_verso" => "rectoverso",
+        "placement_adresse" => "insertion_page_adresse",
+        "surimpression_adresses_document" => true,
+        "impression_expediteur" => false,
+        "ar_scan" => true,
+
+        // Accusé de réception
+        "ar_expediteur_champ1" => $current_user->first_name ?? '',
+        "ar_expediteur_champ2" => $current_user->last_name ?? '',
+
+        // Adresse expéditeur (récupérée depuis le profil utilisateur ou ACF)
+        "adresse_expedition" => [
+            "civilite" => get_field('civilite_user', 'user_' . $current_user->ID) ?? 'M.',
+            "prenom" => $current_user->first_name ?? '',
+            "nom" => $current_user->last_name ?? '',
+            "nom_societe" => get_field('societe_user', 'user_' . $current_user->ID) ?? '',
+            "adresse_ligne1" => get_field('adresse_user', 'user_' . $current_user->ID) ?? '',
+            "adresse_ligne2" => get_field('adresse2_user', 'user_' . $current_user->ID) ?? '',
+            "code_postal" => get_field('cp_user', 'user_' . $current_user->ID) ?? '',
+            "ville" => get_field('ville_user', 'user_' . $current_user->ID) ?? '',
+            "pays" => "FRANCE",
+        ],
+
+        // Adresse destinataire (SCI sélectionnée)
+        "adresse_destination" => [
+            "civilite" => "", // Pas de civilité pour les SCI
+            "prenom" => "",   // Pas de prénom pour les SCI
+            "nom" => $entry['dirigeant'] ?? '',
+            "nom_societe" => $entry['denomination'] ?? '',
+            "adresse_ligne1" => $entry['adresse'] ?? '',
+            "adresse_ligne2" => "",
+            "code_postal" => $entry['code_postal'] ?? '',
+            "ville" => $entry['ville'] ?? '',
+            "pays" => "FRANCE",
+        ],
+
+        // PDF encodé
+        "fichier" => [
+            "format" => "pdf",
+            "contenu_base64" => $pdf_base64,
+        ],
+    ];
+
+    // Récupérer le token depuis la configuration sécurisée
+    $config_manager = sci_config_manager();
+    $token = $config_manager->get_laposte_token();
+
+    if (empty($token)) {
+        wp_send_json_error('Token La Poste non configuré');
+        return;
+    }
+
+    // Envoyer via l'API La Poste
+    $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $token);
+
+    // Logger l'envoi
+    lettre_laposte_log("Envoi lettre pour {$entry['denomination']} (SIREN: {$entry['siren']})");
+
+    if ($response['success']) {
+        wp_send_json_success([
+            'message' => 'Lettre envoyée avec succès',
+            'uid' => $response['uid'] ?? 'non disponible',
+            'denomination' => $entry['denomination']
+        ]);
     } else {
-        wp_send_json_error($result['error']);
+        $error_msg = 'Erreur API : ';
+        if (isset($response['message']) && is_array($response['message'])) {
+            $error_msg .= json_encode($response['message']);
+        } elseif (isset($response['error'])) {
+            $error_msg .= $response['error'];
+        } else {
+            $error_msg .= 'Erreur inconnue';
+        }
+
+        lettre_laposte_log("Erreur envoi pour {$entry['denomination']}: $error_msg");
+        wp_send_json_error($error_msg);
     }
 }
 
@@ -477,7 +461,7 @@ function envoyer_lettre_via_api_la_poste_my_istymo($payload, $token) {
     $response_body = wp_remote_retrieve_body($response);
     $data = json_decode($response_body, true);
 
-    //lettre_laposte_log("Réponse API ($code) : $response_body");
+    lettre_laposte_log("Réponse API ($code) : $response_body");
 
     if ($code >= 200 && $code < 300) {
         return [
@@ -628,7 +612,7 @@ function sci_generer_pdfs() {
 }
 
 add_action('admin_enqueue_scripts', function () {
-    wp_localize_script('lettre-js', 'ajaxurl', admin_url('admin-ajax.php'));
+    wp_localize_script('sci-lettre-js', 'ajaxurl', admin_url('admin-ajax.php'));
 });
 
 ?>

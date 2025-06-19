@@ -101,6 +101,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Fonction pour afficher le progrès d'envoi
+    function showProgress(current, total, message) {
+        const progressHtml = `
+            <div style="margin: 20px 0; padding: 15px; background: #f0f8ff; border: 1px solid #0073aa; border-radius: 4px;">
+                <div style="font-weight: bold; margin-bottom: 10px;">📬 Envoi en cours...</div>
+                <div style="background: #ddd; height: 20px; border-radius: 10px; overflow: hidden;">
+                    <div style="background: #0073aa; height: 100%; width: ${(current/total)*100}%; transition: width 0.3s;"></div>
+                </div>
+                <div style="margin-top: 10px; font-size: 14px;">
+                    ${current}/${total} lettres envoyées
+                </div>
+                <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                    ${message}
+                </div>
+            </div>
+        `;
+        
+        // Remplacer le contenu de l'étape 2
+        step2.innerHTML = progressHtml;
+    }
+
     // Envoyer la campagne
     sendCampaignBtn.addEventListener('click', function() {
         const title = campaignTitle.value.trim();
@@ -113,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Désactiver le bouton pendant l'envoi
         sendCampaignBtn.disabled = true;
-        sendCampaignBtn.textContent = 'Envoi en cours...';
+        sendCampaignBtn.textContent = 'Génération des PDFs...';
         
         // Préparer les données pour l'envoi
         const campaignData = {
@@ -122,7 +143,7 @@ document.addEventListener('DOMContentLoaded', function() {
             entries: selectedEntries
         };
         
-        // Envoyer via AJAX
+        // Étape 1: Générer les PDFs
         const formData = new FormData();
         formData.append('action', 'sci_generer_pdfs');
         formData.append('data', JSON.stringify(campaignData));
@@ -133,49 +154,134 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
-                alert('Campagne générée avec succès !');
+            if (data.success && data.data.files) {
+                // Étape 2: Envoyer chaque lettre via l'API La Poste
+                sendCampaignBtn.textContent = 'Envoi des lettres...';
+                showProgress(0, selectedEntries.length, 'Préparation de l\'envoi...');
                 
-                // Afficher les liens de téléchargement
-                if (data.data.files && data.data.files.length > 0) {
-                    let downloadLinks = 'Fichiers générés :\n\n';
-                    data.data.files.forEach(file => {
-                        downloadLinks += `• ${file.name}\n`;
-                    });
-                    
-                    if (confirm(downloadLinks + '\nVoulez-vous ouvrir le dossier de téléchargement ?')) {
-                        // Ouvrir le premier fichier pour montrer l'emplacement
-                        window.open(data.data.files[0].url, '_blank');
-                    }
-                }
-                
-                // Fermer le popup
-                lettersPopup.style.display = 'none';
-                
-                // Réinitialiser les sélections
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = false;
-                });
-                updateSelectedCount();
-                
+                return sendLettersSequentially(data.data.files, selectedEntries, campaignData);
             } else {
-                alert('Erreur lors de la génération : ' + (data.data || 'Erreur inconnue'));
+                throw new Error('Erreur lors de la génération des PDFs: ' + (data.data || 'Erreur inconnue'));
             }
+        })
+        .then(results => {
+            // Afficher les résultats
+            const successCount = results.filter(r => r.success).length;
+            const errorCount = results.length - successCount;
+            
+            let message = `✅ Campagne terminée !\n\n`;
+            message += `📊 Résultats :\n`;
+            message += `• ${successCount} lettres envoyées avec succès\n`;
+            if (errorCount > 0) {
+                message += `• ${errorCount} erreurs d'envoi\n`;
+            }
+            
+            // Afficher les détails des erreurs si nécessaire
+            const errors = results.filter(r => !r.success);
+            if (errors.length > 0) {
+                message += `\n❌ Erreurs :\n`;
+                errors.forEach((error, index) => {
+                    message += `• ${error.denomination}: ${error.error}\n`;
+                });
+            }
+            
+            alert(message);
+            
+            // Fermer le popup
+            lettersPopup.style.display = 'none';
+            
+            // Réinitialiser les sélections
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            updateSelectedCount();
+            
         })
         .catch(error => {
             console.error('Erreur:', error);
-            alert('Erreur réseau lors de l\'envoi');
+            alert('Erreur lors de l\'envoi : ' + error.message);
         })
         .finally(() => {
             // Réactiver le bouton
             sendCampaignBtn.disabled = false;
             sendCampaignBtn.textContent = 'Envoyer la campagne';
-            
-            // Réinitialiser les champs
-            campaignTitle.value = '';
-            campaignContent.value = '';
         });
     });
+
+    // Fonction pour envoyer les lettres séquentiellement
+    async function sendLettersSequentially(pdfFiles, entries, campaignData) {
+        const results = [];
+        
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const pdfFile = pdfFiles[i];
+            
+            showProgress(i, entries.length, `Envoi vers ${entry.denomination}...`);
+            
+            try {
+                // Télécharger le PDF généré
+                const pdfResponse = await fetch(pdfFile.url);
+                const pdfBlob = await pdfResponse.blob();
+                const pdfBase64 = await blobToBase64(pdfBlob);
+                
+                // Préparer les données pour l'API La Poste
+                const letterData = new FormData();
+                letterData.append('action', 'sci_envoyer_lettre_laposte');
+                letterData.append('entry', JSON.stringify(entry));
+                letterData.append('pdf_base64', pdfBase64);
+                letterData.append('campaign_title', campaignData.title);
+                
+                // Envoyer via AJAX
+                const response = await fetch(ajaxurl, {
+                    method: 'POST',
+                    body: letterData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    results.push({
+                        success: true,
+                        denomination: entry.denomination,
+                        uid: result.data.uid
+                    });
+                } else {
+                    results.push({
+                        success: false,
+                        denomination: entry.denomination,
+                        error: result.data || 'Erreur inconnue'
+                    });
+                }
+                
+            } catch (error) {
+                results.push({
+                    success: false,
+                    denomination: entry.denomination,
+                    error: error.message
+                });
+            }
+            
+            // Petite pause entre les envois pour éviter de surcharger l'API
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        showProgress(entries.length, entries.length, 'Envoi terminé !');
+        
+        return results;
+    }
+
+    // Fonction utilitaire pour convertir un blob en base64
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64 = reader.result.split(',')[1]; // Enlever le préfixe data:
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
 
     // Initialiser le compteur
     updateSelectedCount();
