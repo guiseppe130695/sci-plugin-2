@@ -6,10 +6,10 @@ document.addEventListener('DOMContentLoaded', function() {
         originalSendCampaignBtn.replaceWith(originalSendCampaignBtn.cloneNode(true));
         
         const sendCampaignBtn = document.getElementById('send-campaign');
-        sendCampaignBtn.addEventListener('click', handleCampaignPayment);
+        sendCampaignBtn.addEventListener('click', handleCampaignValidation);
     }
     
-    function handleCampaignPayment() {
+    function handleCampaignValidation() {
         const campaignTitle = document.getElementById('campaign-title');
         const campaignContent = document.getElementById('campaign-content');
         const selectedEntries = getSelectedEntries();
@@ -24,8 +24,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Afficher l'étape de paiement
-        showPaymentStep(selectedEntries, campaignTitle.value, campaignContent.value);
+        // Passer à l'étape 3 (récapitulatif)
+        showRecapStep(selectedEntries, campaignTitle.value, campaignContent.value);
     }
     
     function getSelectedEntries() {
@@ -46,6 +46,114 @@ document.addEventListener('DOMContentLoaded', function() {
         return entries;
     }
     
+    function showRecapStep(entries, title, content) {
+        const step2 = document.getElementById('step-2');
+        const sciCount = entries.length;
+        
+        // Récupérer le prix unitaire depuis PHP
+        const unitPrice = parseFloat(sciPaymentData.unit_price || 5.00);
+        const totalPrice = (sciCount * unitPrice).toFixed(2);
+        
+        // Créer l'interface de récapitulatif (étape 3)
+        const recapHtml = `
+            <h2>📋 Récapitulatif de votre campagne</h2>
+            
+            <div class="campaign-recap">
+                <div class="recap-section">
+                    <h3>📝 Informations de la campagne</h3>
+                    <div class="recap-item">
+                        <strong>Titre :</strong> ${escapeHtml(title)}
+                    </div>
+                    <div class="recap-item">
+                        <strong>Contenu :</strong>
+                        <div class="content-preview">${escapeHtml(content).substring(0, 200)}${content.length > 200 ? '...' : ''}</div>
+                    </div>
+                </div>
+                
+                <div class="recap-section">
+                    <h3>🏢 SCI sélectionnées (${sciCount})</h3>
+                    <div class="sci-list-recap">
+                        ${entries.map(entry => `
+                            <div class="sci-item-recap">
+                                <strong>${escapeHtml(entry.denomination)}</strong><br>
+                                <small>Dirigeant: ${escapeHtml(entry.dirigeant)}</small><br>
+                                <small>${escapeHtml(entry.adresse)}, ${escapeHtml(entry.code_postal)} ${escapeHtml(entry.ville)}</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                
+                <div class="recap-section">
+                    <h3>💰 Tarification</h3>
+                    <div class="pricing-table">
+                        <div class="pricing-row">
+                            <span>Nombre de lettres :</span>
+                            <span>${sciCount}</span>
+                        </div>
+                        <div class="pricing-row">
+                            <span>Prix unitaire :</span>
+                            <span>${unitPrice}€</span>
+                        </div>
+                        <div class="pricing-row total-row">
+                            <span><strong>Total TTC :</strong></span>
+                            <span><strong>${totalPrice}€</strong></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="recap-section">
+                    <h3>📦 Services inclus</h3>
+                    <div class="services-list">
+                        <div class="service-item">✅ Génération automatique des PDFs personnalisés</div>
+                        <div class="service-item">✅ Envoi en lettre recommandée avec accusé de réception (LRAR)</div>
+                        <div class="service-item">✅ Suivi de la distribution en temps réel</div>
+                        <div class="service-item">✅ Accusé de réception dématérialisé</div>
+                        <div class="service-item">✅ Historique complet dans vos campagnes</div>
+                        <div class="service-item">✅ Support technique inclus</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="recap-buttons">
+                <button id="proceed-to-payment" class="button button-primary button-large">
+                    💳 Procéder au paiement (${totalPrice}€)
+                </button>
+                <button id="back-to-content" class="button" style="margin-left: 10px;">
+                    ← Modifier le contenu
+                </button>
+                <button id="back-to-selection" class="button" style="margin-left: 10px;">
+                    ← Modifier la sélection
+                </button>
+                <button id="close-popup-recap" class="button" style="margin-left: 10px;">
+                    Annuler
+                </button>
+            </div>
+        `;
+        
+        step2.innerHTML = recapHtml;
+        
+        // Event listeners pour les boutons de récapitulatif
+        document.getElementById('proceed-to-payment').addEventListener('click', function() {
+            showPaymentStep(entries, title, content);
+        });
+        
+        document.getElementById('back-to-content').addEventListener('click', function() {
+            showContentStep(title, content);
+        });
+        
+        document.getElementById('back-to-selection').addEventListener('click', function() {
+            document.getElementById('step-2').style.display = 'none';
+            document.getElementById('step-1').style.display = 'block';
+        });
+        
+        document.getElementById('close-popup-recap').addEventListener('click', function() {
+            if (confirm('Êtes-vous sûr de vouloir annuler ? Votre campagne ne sera pas sauvegardée.')) {
+                document.getElementById('letters-popup').style.display = 'none';
+                resetPopup();
+            }
+        });
+    }
+    
     function showPaymentStep(entries, title, content) {
         const step2 = document.getElementById('step-2');
         const sciCount = entries.length;
@@ -54,92 +162,83 @@ document.addEventListener('DOMContentLoaded', function() {
         const unitPrice = parseFloat(sciPaymentData.unit_price || 5.00);
         const totalPrice = (sciCount * unitPrice).toFixed(2);
         
-        // Créer l'interface de paiement avec checkout embarqué
+        // Créer l'interface de paiement (étape 4)
         const paymentHtml = `
-            <h2>💳 Finalisation de la campagne</h2>
+            <h2>💳 Paiement sécurisé</h2>
             
-            <div class="payment-summary">
-                <h3>📊 Récapitulatif de votre commande</h3>
-                <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 15px;">
-                    <div><strong>Campagne :</strong> ${escapeHtml(title)}</div>
-                    <div></div>
-                    <div>Nombre de SCI à contacter :</div>
-                    <div>${sciCount}</div>
-                    <div>Prix unitaire :</div>
-                    <div>${unitPrice}€</div>
-                    <hr style="grid-column: 1 / -1; margin: 10px 0;">
-                    <div><strong>Total à payer :</strong></div>
-                    <div class="payment-total" style="background: #0073aa; color: white; padding: 5px 10px; border-radius: 3px; font-weight: bold;">
-                        ${totalPrice}€
+            <div class="payment-header">
+                <div class="payment-summary-compact">
+                    <div class="summary-item">
+                        <span>Campagne :</span>
+                        <span><strong>${escapeHtml(title)}</strong></span>
+                    </div>
+                    <div class="summary-item">
+                        <span>${sciCount} lettre${sciCount > 1 ? 's' : ''} :</span>
+                        <span><strong>${totalPrice}€</strong></span>
                     </div>
                 </div>
             </div>
             
-            <div class="payment-features">
-                <h4>📋 Services inclus :</h4>
-                <ul>
-                    <li>✅ Génération automatique des PDFs personnalisés</li>
-                    <li>✅ Envoi en lettre recommandée avec accusé de réception</li>
-                    <li>✅ Suivi de la distribution en temps réel</li>
-                    <li>✅ Accusé de réception dématérialisé</li>
-                    <li>✅ Historique complet dans vos campagnes</li>
-                </ul>
-            </div>
-            
             <div id="payment-processing" style="display: none;">
-                <div style="text-align: center; padding: 20px;">
-                    <div style="font-size: 18px; margin-bottom: 15px;">⏳ Création de la commande...</div>
+                <div class="processing-container">
+                    <div class="processing-icon">⏳</div>
+                    <div class="processing-text">Création de la commande...</div>
                     <div class="progress-bar">
                         <div class="progress-bar-fill" id="payment-progress"></div>
                     </div>
-                    <div style="font-size: 14px; color: #666; margin-top: 10px;">
-                        Préparation du paiement sécurisé...
-                    </div>
+                    <div class="processing-subtext">Préparation du paiement sécurisé...</div>
                 </div>
             </div>
             
             <div id="checkout-container" style="display: none;">
-                <h3>💳 Paiement sécurisé</h3>
-                <div id="embedded-checkout" style="border: 1px solid #ddd; border-radius: 5px; padding: 15px; background: #fafafa;">
+                <div class="checkout-header">
+                    <h3>🔒 Paiement sécurisé WooCommerce</h3>
+                    <p>Vos données de paiement sont protégées et chiffrées</p>
+                </div>
+                <div id="embedded-checkout">
                     <!-- Le checkout WooCommerce sera chargé ici -->
                 </div>
             </div>
             
             <div id="payment-buttons">
-                <button id="proceed-payment" class="button button-primary" style="font-size: 16px; padding: 12px 24px;">
-                    💳 Procéder au paiement (${totalPrice}€)
+                <button id="create-order-btn" class="button button-primary button-large">
+                    🛒 Créer la commande
                 </button>
-                <button id="back-to-step-1-payment" class="button" style="margin-left: 10px;">
-                    ← Modifier la campagne
+                <button id="back-to-recap" class="button" style="margin-left: 10px;">
+                    ← Retour au récapitulatif
                 </button>
                 <button id="close-popup-payment" class="button" style="margin-left: 10px;">
                     Annuler
                 </button>
             </div>
             
-            <div id="payment-success" style="display: none; text-align: center; padding: 30px;">
-                <div style="font-size: 48px; margin-bottom: 20px;">✅</div>
-                <h3 style="color: #28a745; margin-bottom: 15px;">Paiement confirmé !</h3>
-                <p style="margin-bottom: 20px;">Votre campagne est en cours de traitement.</p>
-                <div class="progress-bar">
-                    <div class="progress-bar-fill" id="sending-progress" style="width: 0%;"></div>
-                </div>
-                <div id="sending-status" style="margin-top: 15px; font-size: 14px; color: #666;">
-                    Génération des PDFs en cours...
+            <div id="payment-success" style="display: none;">
+                <div class="success-container">
+                    <div class="success-icon">✅</div>
+                    <h3>Paiement confirmé !</h3>
+                    <p>Votre campagne est en cours de traitement.</p>
+                    <div class="progress-bar">
+                        <div class="progress-bar-fill" id="sending-progress"></div>
+                    </div>
+                    <div id="sending-status">Génération des PDFs en cours...</div>
+                    <div class="success-actions">
+                        <button id="view-campaigns" class="button button-primary">
+                            📋 Voir mes campagnes
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
         
         step2.innerHTML = paymentHtml;
         
-        // Event listeners pour les nouveaux boutons
-        document.getElementById('proceed-payment').addEventListener('click', function() {
+        // Event listeners pour les boutons de paiement
+        document.getElementById('create-order-btn').addEventListener('click', function() {
             createOrderAndShowCheckout(entries, title, content);
         });
         
-        document.getElementById('back-to-step-1-payment').addEventListener('click', function() {
-            // Revenir à l'étape de rédaction
-            showContentStep(title, content);
+        document.getElementById('back-to-recap').addEventListener('click', function() {
+            showRecapStep(entries, title, content);
         });
         
         document.getElementById('close-popup-payment').addEventListener('click', function() {
@@ -190,7 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     processingDiv.style.display = 'none';
                     checkoutContainer.style.display = 'block';
                     
-                    // Charger le checkout dans l'iframe ou via AJAX
+                    // Charger le checkout dans l'iframe optimisé
                     loadEmbeddedCheckout(data.data.order_id, data.data.checkout_url);
                 }, 500);
             } else {
@@ -210,20 +309,23 @@ document.addEventListener('DOMContentLoaded', function() {
     function loadEmbeddedCheckout(orderId, checkoutUrl) {
         const checkoutDiv = document.getElementById('embedded-checkout');
         
-        // Créer un iframe pour le checkout
+        // Créer un iframe optimisé pour le checkout
         const iframe = document.createElement('iframe');
-        iframe.src = checkoutUrl + '&embedded=1'; // Paramètre pour indiquer que c'est embarqué
+        iframe.src = checkoutUrl + '&embedded=1&hide_admin_bar=1'; // Paramètres pour optimiser l'affichage
         iframe.style.width = '100%';
-        iframe.style.height = '600px';
+        iframe.style.height = '700px'; // Hauteur augmentée pour plus de confort
         iframe.style.border = 'none';
-        iframe.style.borderRadius = '5px';
+        iframe.style.borderRadius = '8px';
+        iframe.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
         iframe.name = 'checkout-frame';
+        iframe.id = 'checkout-iframe';
         
-        // Ajouter un message de chargement
+        // Message de chargement avec style amélioré
         checkoutDiv.innerHTML = `
-            <div style="text-align: center; padding: 40px;">
-                <div style="font-size: 16px; margin-bottom: 10px;">🔒 Chargement du paiement sécurisé...</div>
-                <div style="font-size: 14px; color: #666;">Veuillez patienter quelques secondes</div>
+            <div class="checkout-loading">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">🔒 Chargement du paiement sécurisé...</div>
+                <div class="loading-subtext">Connexion sécurisée en cours</div>
             </div>
         `;
         
@@ -232,16 +334,31 @@ document.addEventListener('DOMContentLoaded', function() {
             checkoutDiv.innerHTML = '';
             checkoutDiv.appendChild(iframe);
             
-            // Ajouter un bouton de retour
-            const backButton = document.createElement('button');
-            backButton.className = 'button';
-            backButton.style.marginTop = '15px';
-            backButton.textContent = '← Retour au récapitulatif';
-            backButton.onclick = function() {
-                document.getElementById('checkout-container').style.display = 'none';
-                document.getElementById('payment-buttons').style.display = 'block';
+            // Ajouter les boutons de navigation
+            const navigationDiv = document.createElement('div');
+            navigationDiv.className = 'checkout-navigation';
+            navigationDiv.innerHTML = `
+                <button id="back-to-recap-from-checkout" class="button">
+                    ← Retour au récapitulatif
+                </button>
+                <button id="refresh-checkout" class="button" style="margin-left: 10px;">
+                    🔄 Actualiser
+                </button>
+            `;
+            checkoutDiv.appendChild(navigationDiv);
+            
+            // Event listeners pour la navigation
+            document.getElementById('back-to-recap-from-checkout').onclick = function() {
+                if (confirm('Êtes-vous sûr de vouloir revenir au récapitulatif ? La commande en cours sera annulée.')) {
+                    showRecapStep(getSelectedEntries(), 
+                        document.getElementById('campaign-title')?.value || '', 
+                        document.getElementById('campaign-content')?.value || '');
+                }
             };
-            checkoutDiv.appendChild(backButton);
+            
+            document.getElementById('refresh-checkout').onclick = function() {
+                iframe.src = iframe.src; // Recharger l'iframe
+            };
         }, 1000);
         
         // Écouter les messages de l'iframe pour détecter le succès du paiement
@@ -280,10 +397,10 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }, 3000); // Vérifier toutes les 3 secondes
         
-        // Arrêter le polling après 10 minutes
+        // Arrêter le polling après 15 minutes
         setTimeout(() => {
             clearInterval(pollInterval);
-        }, 600000);
+        }, 900000);
     }
     
     function handlePaymentSuccess(orderId) {
@@ -297,16 +414,22 @@ document.addEventListener('DOMContentLoaded', function() {
         // Simuler le processus d'envoi
         simulateSendingProcess();
         
-        // Programmer la fermeture automatique après 10 secondes
-        setTimeout(() => {
+        // Event listener pour le bouton "Voir mes campagnes"
+        document.getElementById('view-campaigns').addEventListener('click', function() {
             document.getElementById('letters-popup').style.display = 'none';
             resetPopup();
-            
-            // Rediriger vers la page des campagnes
-            if (confirm('Paiement confirmé ! Voulez-vous consulter vos campagnes ?')) {
-                window.location.href = sciPaymentData.campaigns_url || (window.location.origin + '/wp-admin/admin.php?page=sci-campaigns');
+            window.location.href = sciPaymentData.campaigns_url || (window.location.origin + '/wp-admin/admin.php?page=sci-campaigns');
+        });
+        
+        // Programmer la fermeture automatique après 15 secondes
+        setTimeout(() => {
+            if (confirm('Paiement confirmé ! Voulez-vous consulter vos campagnes maintenant ?')) {
+                document.getElementById('view-campaigns').click();
+            } else {
+                document.getElementById('letters-popup').style.display = 'none';
+                resetPopup();
             }
-        }, 10000);
+        }, 15000);
     }
     
     function simulateSendingProcess() {
@@ -314,10 +437,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusDiv = document.getElementById('sending-status');
         
         const steps = [
-            { progress: 20, text: 'Génération des PDFs personnalisés...' },
-            { progress: 40, text: 'Préparation des adresses...' },
-            { progress: 60, text: 'Connexion à l\'API La Poste...' },
-            { progress: 80, text: 'Envoi des lettres en cours...' },
+            { progress: 15, text: 'Validation du paiement...' },
+            { progress: 30, text: 'Génération des PDFs personnalisés...' },
+            { progress: 50, text: 'Préparation des adresses destinataires...' },
+            { progress: 70, text: 'Connexion à l\'API La Poste...' },
+            { progress: 90, text: 'Envoi des lettres en cours...' },
             { progress: 100, text: 'Campagne envoyée avec succès ! 🎉' }
         ];
         
@@ -326,13 +450,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const stepInterval = setInterval(() => {
             if (currentStep < steps.length) {
                 const step = steps[currentStep];
-                animateProgress(progressBar, progressBar.style.width.replace('%', '') || 0, step.progress, 800);
+                animateProgress(progressBar, progressBar.style.width.replace('%', '') || 0, step.progress, 1000);
                 statusDiv.textContent = step.text;
                 currentStep++;
             } else {
                 clearInterval(stepInterval);
             }
-        }, 1500);
+        }, 1800);
     }
     
     function showContentStep(title, content) {
@@ -344,7 +468,12 @@ document.addEventListener('DOMContentLoaded', function() {
             <input type="text" id="campaign-title" style="width:100%; margin-bottom:15px;" required placeholder="Ex: Proposition d'achat SCI" value="${escapeHtml(title)}"><br>
 
             <label for="campaign-content">Contenu de la lettre :</label><br>
-            <textarea id="campaign-content" style="width:100%; height:120px; margin-bottom:15px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant">${escapeHtml(content)}</textarea>
+            <textarea id="campaign-content" style="width:100%; height:120px; margin-bottom:15px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
+
+Exemple:
+Madame, Monsieur [NOM],
+
+Nous sommes intéressés par l'acquisition de votre SCI...">${escapeHtml(content)}</textarea>
 
             <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
                 <h4 style="margin-top: 0;">💡 Conseils pour votre lettre :</h4>
@@ -357,7 +486,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
 
             <button id="send-campaign" class="button button-primary" style="font-size: 16px; padding: 8px 16px;">
-                💳 Continuer vers le paiement
+                📋 Voir le récapitulatif →
             </button>
             <button id="back-to-step-1" class="button" style="margin-left:10px;">← Précédent</button>
             <button id="close-popup-2" class="button" style="margin-left:10px;">Fermer</button>
@@ -366,7 +495,7 @@ document.addEventListener('DOMContentLoaded', function() {
         step2.innerHTML = contentHtml;
         
         // Réattacher les event listeners
-        document.getElementById('send-campaign').addEventListener('click', handleCampaignPayment);
+        document.getElementById('send-campaign').addEventListener('click', handleCampaignValidation);
         document.getElementById('back-to-step-1').addEventListener('click', function() {
             document.getElementById('step-2').style.display = 'none';
             document.getElementById('step-1').style.display = 'block';
@@ -409,8 +538,12 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // L'insérer avant les boutons
         const step2 = document.getElementById('step-2');
-        const buttons = step2.querySelector('#send-campaign').parentNode;
-        step2.insertBefore(errorDiv, buttons);
+        const buttons = step2.querySelector('#send-campaign')?.parentNode || 
+                       step2.querySelector('#proceed-to-payment')?.parentNode ||
+                       step2.querySelector('#create-order-btn')?.parentNode;
+        if (buttons) {
+            step2.insertBefore(errorDiv, buttons);
+        }
         
         // La supprimer après 5 secondes
         setTimeout(() => {

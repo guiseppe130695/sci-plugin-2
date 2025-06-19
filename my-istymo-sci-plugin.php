@@ -2,7 +2,7 @@
 /*
 Plugin Name: SCI
 Description: Plugin personnalisé SCI avec un panneau admin et un sélecteur de codes postaux.
-Version: 1.3
+Version: 1.4
 Author: Brio Guiseppe
 */
 
@@ -135,7 +135,7 @@ function sci_afficher_panel() {
     // Affichage du formulaire et des résultats
     ?>
     <div class="wrap">
-        <h1>SCI – Code Postal</h1>
+        <h1>🏢 SCI – Recherche et Contact</h1>
         <form method="post">
             <label for="codePostal">Sélectionnez votre code postal :</label><br><br>
             <select name="codePostal" id="codePostal" required>
@@ -147,18 +147,18 @@ function sci_afficher_panel() {
                 <?php endforeach; ?>
             </select>
             <br><br>
-            <input type="submit" class="button button-primary" value="Rechercher les SCI">
+            <input type="submit" class="button button-primary" value="🔍 Rechercher les SCI">
             <button id="send-letters-btn" type="button" class="button button-secondary" disabled>
                 📬 Créer une campagne (<span id="selected-count">0</span>)
             </button>
         </form>
 
         <?php if (!empty($results)): ?>
-            <h2>Résultats :</h2>
+            <h2>📋 Résultats de recherche :</h2>
             <table class="widefat fixed striped">
                 <thead>
                     <tr>
-                        <th>Favoris</th>
+                        <th>⭐</th>
                         <th>Dénomination</th>
                         <th>Dirigeant</th>
                         <th>SIREN</th>
@@ -205,47 +205,56 @@ function sci_afficher_panel() {
         <?php endif; ?>
     </div>
 
-<!-- Popup lettre avec paiement intégré -->
-<div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:10000; justify-content:center; align-items:center;">
-  <div style="background:#fff; padding:20px; width:600px; max-width:90vw; max-height:90vh; overflow-y:auto; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3);">
+<!-- Popup lettre avec paiement intégré en 4 étapes -->
+<div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
+  <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
 
-    <!-- Step 1 : Liste des SCI sélectionnées -->
+    <!-- Étape 1 : Liste des SCI sélectionnées -->
     <div class="step" id="step-1">
       <h2>📋 SCI sélectionnées</h2>
-      <ul id="selected-sci-list" style="max-height:300px; overflow-y:auto; border:1px solid #ccc; padding:10px; margin-bottom:20px;"></ul>
-      <button id="to-step-2" class="button button-primary">Suivant →</button>
-      <button id="close-popup-1" class="button" style="margin-left:10px;">Fermer</button>
+      <p style="color: #666; margin-bottom: 20px;">Vérifiez votre sélection avant de continuer</p>
+      <ul id="selected-sci-list" style="max-height:350px; overflow-y:auto; border:1px solid #ddd; padding:15px; margin-bottom:25px; border-radius:6px;"></ul>
+      <div style="text-align: center;">
+        <button id="to-step-2" class="button button-primary button-large">
+          ✍️ Rédiger le contenu →
+        </button>
+        <button id="close-popup-1" class="button" style="margin-left:15px;">Fermer</button>
+      </div>
     </div>
 
-    <!-- Step 2 : Saisie titre et contenu lettre + Paiement -->
+    <!-- Étape 2 : Saisie titre et contenu lettre -->
     <div class="step" id="step-2" style="display:none;">
       <h2>✍️ Contenu de la campagne</h2>
-      <label for="campaign-title">Titre de la campagne :</label><br>
-      <input type="text" id="campaign-title" style="width:100%; margin-bottom:15px;" required placeholder="Ex: Proposition d'achat SCI"><br>
+      <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre lettre</p>
+      
+      <label for="campaign-title"><strong>Titre de la campagne :</strong></label><br>
+      <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'achat SCI"><br>
 
-      <label for="campaign-content">Contenu de la lettre :</label><br>
-      <textarea id="campaign-content" style="width:100%; height:120px; margin-bottom:15px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
+      <label for="campaign-content"><strong>Contenu de la lettre :</strong></label><br>
+      <textarea id="campaign-content" style="width:100%; height:150px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
 
 Exemple:
 Madame, Monsieur [NOM],
 
 Nous sommes intéressés par l'acquisition de votre SCI..."></textarea>
 
-      <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-        <h4 style="margin-top: 0;">💡 Conseils pour votre lettre :</h4>
-        <ul style="margin-bottom: 0; font-size: 14px;">
-          <li>Utilisez <code>[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
-          <li>Soyez professionnel et courtois</li>
-          <li>Précisez clairement votre demande</li>
-          <li>Ajoutez vos coordonnées de contact</li>
+      <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
+        <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre lettre :</h4>
+        <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
+          <li>Utilisez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
+          <li>Soyez professionnel et courtois dans votre approche</li>
+          <li>Précisez clairement l'objet de votre demande</li>
+          <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
         </ul>
       </div>
 
-      <button id="send-campaign" class="button button-primary" style="font-size: 16px; padding: 8px 16px;">
-        💳 Continuer vers le paiement
-      </button>
-      <button id="back-to-step-1" class="button" style="margin-left:10px;">← Précédent</button>
-      <button id="close-popup-2" class="button" style="margin-left:10px;">Fermer</button>
+      <div style="text-align: center;">
+        <button id="send-campaign" class="button button-primary button-large">
+          📋 Voir le récapitulatif →
+        </button>
+        <button id="back-to-step-1" class="button" style="margin-left:15px;">← Précédent</button>
+        <button id="close-popup-2" class="button" style="margin-left:15px;">Fermer</button>
+      </div>
     </div>
 
   </div>

@@ -26,6 +26,9 @@ class SCI_WooCommerce_Integration {
         // Hooks pour personnaliser le checkout embarqué
         add_action('wp_head', array($this, 'add_checkout_scripts'));
         add_filter('woocommerce_checkout_redirect_empty_cart', array($this, 'prevent_empty_cart_redirect'));
+        
+        // Hook pour masquer la barre d'admin dans le checkout embarqué
+        add_action('wp', array($this, 'maybe_hide_admin_bar'));
     }
     
     public function init() {
@@ -35,6 +38,154 @@ class SCI_WooCommerce_Integration {
         // Créer le produit automatiquement s'il n'existe pas
         if (!$this->product_id || !get_post($this->product_id)) {
             $this->create_sci_product();
+        }
+    }
+    
+    /**
+     * Masque la barre d'administration WordPress pour le checkout embarqué
+     */
+    public function maybe_hide_admin_bar() {
+        if (isset($_GET['embedded']) && $_GET['embedded'] == '1') {
+            // Masquer la barre d'admin
+            show_admin_bar(false);
+            
+            // Ajouter des styles pour optimiser l'affichage embarqué
+            add_action('wp_head', function() {
+                ?>
+                <style>
+                /* Masquer complètement la barre d'admin */
+                #wpadminbar {
+                    display: none !important;
+                }
+                
+                /* Ajuster le margin-top du body */
+                body.admin-bar {
+                    margin-top: 0 !important;
+                }
+                
+                html {
+                    margin-top: 0 !important;
+                }
+                
+                /* Optimiser l'affichage pour l'iframe */
+                body {
+                    background: #f9f9f9 !important;
+                    margin: 0 !important;
+                    padding: 15px !important;
+                }
+                
+                /* Masquer les éléments non essentiels */
+                .site-header,
+                .site-footer,
+                .breadcrumb,
+                .woocommerce-breadcrumb,
+                .site-navigation,
+                .widget-area {
+                    display: none !important;
+                }
+                
+                /* Optimiser le contenu principal */
+                .site-content,
+                .content-area,
+                main {
+                    width: 100% !important;
+                    max-width: none !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
+                
+                /* Améliorer l'affichage du checkout */
+                .woocommerce {
+                    background: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+                
+                .woocommerce-checkout .col2-set {
+                    width: 100% !important;
+                    display: block !important;
+                }
+                
+                .woocommerce-checkout .col-1,
+                .woocommerce-checkout .col-2 {
+                    width: 100% !important;
+                    float: none !important;
+                    margin-bottom: 20px;
+                }
+                
+                /* Améliorer les formulaires */
+                .woocommerce-checkout-payment {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 6px;
+                    margin-top: 20px;
+                    border: 1px solid #e9ecef;
+                }
+                
+                .woocommerce-checkout-payment .payment_methods {
+                    background: white;
+                    padding: 15px;
+                    border-radius: 4px;
+                    border: 1px solid #dee2e6;
+                }
+                
+                /* Améliorer les boutons */
+                .woocommerce #payment #place_order {
+                    background: linear-gradient(135deg, #0073aa 0%, #005a87 100%) !important;
+                    border: none !important;
+                    border-radius: 6px !important;
+                    padding: 15px 30px !important;
+                    font-size: 16px !important;
+                    font-weight: 600 !important;
+                    width: 100% !important;
+                    margin-top: 15px !important;
+                }
+                
+                .woocommerce #payment #place_order:hover {
+                    background: linear-gradient(135deg, #005a87 0%, #004a73 100%) !important;
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 8px rgba(0,115,170,0.3) !important;
+                }
+                
+                /* Messages d'erreur et de succès */
+                .woocommerce-message,
+                .woocommerce-error,
+                .woocommerce-info {
+                    border-radius: 6px !important;
+                    padding: 15px 20px !important;
+                    margin-bottom: 20px !important;
+                }
+                
+                .woocommerce-message {
+                    background: #d4edda !important;
+                    border-color: #c3e6cb !important;
+                    color: #155724 !important;
+                }
+                
+                .woocommerce-error {
+                    background: #f8d7da !important;
+                    border-color: #f5c6cb !important;
+                    color: #721c24 !important;
+                }
+                
+                /* Responsive pour mobile */
+                @media (max-width: 768px) {
+                    body {
+                        padding: 10px !important;
+                    }
+                    
+                    .woocommerce {
+                        padding: 15px !important;
+                    }
+                    
+                    .woocommerce-checkout-payment {
+                        padding: 15px !important;
+                    }
+                }
+                </style>
+                <?php
+            });
         }
     }
     
@@ -49,6 +200,8 @@ class SCI_WooCommerce_Integration {
             document.addEventListener('DOMContentLoaded', function() {
                 // Détecter si on est dans un iframe
                 if (window.parent !== window) {
+                    console.log('Checkout embarqué détecté');
+                    
                     // Écouter les changements de statut de commande
                     const observer = new MutationObserver(function(mutations) {
                         mutations.forEach(function(mutation) {
@@ -57,8 +210,12 @@ class SCI_WooCommerce_Integration {
                                 mutation.addedNodes.forEach(function(node) {
                                     if (node.nodeType === 1) {
                                         // Succès de paiement
-                                        if (node.classList && (node.classList.contains('woocommerce-message') || 
-                                            node.classList.contains('woocommerce-order-received'))) {
+                                        if (node.classList && (
+                                            node.classList.contains('woocommerce-message') || 
+                                            node.classList.contains('woocommerce-order-received') ||
+                                            node.classList.contains('woocommerce-thankyou-order-received')
+                                        )) {
+                                            console.log('Paiement réussi détecté');
                                             window.parent.postMessage({
                                                 type: 'woocommerce_checkout_success',
                                                 message: 'Paiement confirmé'
@@ -66,8 +223,11 @@ class SCI_WooCommerce_Integration {
                                         }
                                         
                                         // Erreur de paiement
-                                        if (node.classList && (node.classList.contains('woocommerce-error') || 
-                                            node.classList.contains('woocommerce-notice--error'))) {
+                                        if (node.classList && (
+                                            node.classList.contains('woocommerce-error') || 
+                                            node.classList.contains('woocommerce-notice--error')
+                                        )) {
+                                            console.log('Erreur de paiement détectée');
                                             window.parent.postMessage({
                                                 type: 'woocommerce_checkout_error',
                                                 message: node.textContent || 'Erreur de paiement'
@@ -85,44 +245,46 @@ class SCI_WooCommerce_Integration {
                     });
                     
                     // Détecter la redirection vers la page de confirmation
-                    if (window.location.href.includes('order-received')) {
+                    if (window.location.href.includes('order-received') || 
+                        window.location.href.includes('checkout/order-received')) {
+                        console.log('Page de confirmation détectée');
                         window.parent.postMessage({
                             type: 'woocommerce_checkout_success',
                             message: 'Commande confirmée'
                         }, '*');
                     }
+                    
+                    // Détecter les formulaires de paiement soumis
+                    const checkoutForm = document.querySelector('form.checkout, form#order_review');
+                    if (checkoutForm) {
+                        checkoutForm.addEventListener('submit', function() {
+                            console.log('Formulaire de paiement soumis');
+                            // Attendre un peu puis vérifier le résultat
+                            setTimeout(function() {
+                                // Vérifier s'il y a des erreurs
+                                const errors = document.querySelectorAll('.woocommerce-error, .woocommerce-notice--error');
+                                if (errors.length === 0) {
+                                    // Pas d'erreur visible, probablement un succès
+                                    const successElements = document.querySelectorAll('.woocommerce-message, .woocommerce-order-received');
+                                    if (successElements.length > 0) {
+                                        window.parent.postMessage({
+                                            type: 'woocommerce_checkout_success',
+                                            message: 'Paiement traité avec succès'
+                                        }, '*');
+                                    }
+                                }
+                            }, 2000);
+                        });
+                    }
+                    
+                    // Envoyer un message de chargement terminé
+                    window.parent.postMessage({
+                        type: 'checkout_loaded',
+                        message: 'Checkout chargé'
+                    }, '*');
                 }
             });
             </script>
-            <style>
-            /* Styles pour améliorer l'affichage dans l'iframe */
-            body.woocommerce-checkout,
-            body.woocommerce-order-pay {
-                margin: 0 !important;
-                padding: 10px !important;
-            }
-            
-            .woocommerce-checkout .col2-set,
-            .woocommerce-order-pay .col2-set {
-                width: 100% !important;
-            }
-            
-            /* Masquer certains éléments non nécessaires dans l'iframe */
-            .site-header,
-            .site-footer,
-            .breadcrumb,
-            .woocommerce-breadcrumb {
-                display: none !important;
-            }
-            
-            /* Améliorer l'affichage du formulaire */
-            .woocommerce-checkout-payment {
-                background: #f9f9f9;
-                padding: 15px;
-                border-radius: 5px;
-                margin-top: 15px;
-            }
-            </style>
             <?php
         }
     }
@@ -240,9 +402,9 @@ class SCI_WooCommerce_Integration {
             return;
         }
         
-        // Retourner l'URL de paiement avec paramètre embedded
+        // Retourner l'URL de paiement avec paramètres optimisés
         $order = wc_get_order($order_id);
-        $checkout_url = $order->get_checkout_payment_url() . '&embedded=1';
+        $checkout_url = $order->get_checkout_payment_url() . '&embedded=1&hide_admin_bar=1';
         
         wp_send_json_success(array(
             'order_id' => $order_id,
