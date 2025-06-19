@@ -2,7 +2,7 @@
 /*
 Plugin Name: SCI
 Description: Plugin personnalisé SCI avec un panneau admin et un sélecteur de codes postaux.
-Version: 1.1
+Version: 1.2
 Author: Brio Guiseppe
 */
 
@@ -13,6 +13,7 @@ require_once plugin_dir_path(__FILE__) . 'lib/tcpdf/tcpdf.php';
 require_once plugin_dir_path(__FILE__) . 'includes/favoris-handler.php';
 require_once plugin_dir_path(__FILE__) . 'includes/config-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/campaign-manager.php';
+require_once plugin_dir_path(__FILE__) . 'includes/woocommerce-integration.php';
 
 
 // --- Ajout du menu SCI dans l'admin WordPress ---
@@ -82,6 +83,12 @@ function sci_afficher_panel() {
         echo '<div class="notice notice-error"><p><strong>⚠️ Configuration manquante :</strong> Veuillez configurer vos tokens API dans <a href="' . admin_url('admin.php?page=sci-config') . '">Configuration</a>.</p></div>';
     }
 
+    // Vérifier WooCommerce
+    $woocommerce_integration = sci_woocommerce();
+    if (!$woocommerce_integration->is_woocommerce_ready()) {
+        echo '<div class="notice notice-warning"><p><strong>⚠️ WooCommerce requis :</strong> Veuillez installer et configurer WooCommerce pour utiliser le système de paiement.</p></div>';
+    }
+
     // Vérifier la configuration des données expéditeur
     $campaign_manager = sci_campaign_manager();
     $expedition_data = $campaign_manager->get_user_expedition_data();
@@ -142,7 +149,7 @@ function sci_afficher_panel() {
             <br><br>
             <input type="submit" class="button button-primary" value="Rechercher les SCI">
             <button id="send-letters-btn" type="button" class="button button-secondary" disabled>
-                📬 Envoyer les lettres (<span id="selected-count">0</span>)
+                📬 Créer une campagne (<span id="selected-count">0</span>)
             </button>
         </form>
 
@@ -158,7 +165,7 @@ function sci_afficher_panel() {
                         <th>Adresse</th>
                         <th>Ville</th>
                         <th>Code Postal</th>
-                        <th>Campagne</th>
+                        <th>Sélection</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -198,37 +205,51 @@ function sci_afficher_panel() {
         <?php endif; ?>
     </div>
 
-<!-- Popup lettre -->
+<!-- Popup lettre avec paiement intégré -->
 <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:10000; justify-content:center; align-items:center;">
-  <div style="background:#fff; padding:20px; width:400px; max-height:80vh; overflow-y:auto; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3);">
+  <div style="background:#fff; padding:20px; width:500px; max-height:80vh; overflow-y:auto; border-radius:8px; box-shadow:0 0 15px rgba(0,0,0,0.3);">
 
     <!-- Step 1 : Liste des SCI sélectionnées -->
     <div class="step" id="step-1">
-      <h2>SCI sélectionnées</h2>
+      <h2>📋 SCI sélectionnées</h2>
       <ul id="selected-sci-list" style="max-height:300px; overflow-y:auto; border:1px solid #ccc; padding:10px; margin-bottom:20px;"></ul>
-      <button id="to-step-2" class="button button-primary">Suivant</button>
+      <button id="to-step-2" class="button button-primary">Suivant →</button>
       <button id="close-popup-1" class="button" style="margin-left:10px;">Fermer</button>
     </div>
 
-    <!-- Step 2 : Saisie titre et contenu lettre -->
+    <!-- Step 2 : Saisie titre et contenu lettre + Paiement -->
     <div class="step" id="step-2" style="display:none;">
-      <h2>Campagne de lettre</h2>
+      <h2>✍️ Contenu de la campagne</h2>
       <label for="campaign-title">Titre de la campagne :</label><br>
-      <input type="text" id="campaign-title" style="width:100%; margin-bottom:10px;" required><br>
+      <input type="text" id="campaign-title" style="width:100%; margin-bottom:15px;" required placeholder="Ex: Proposition d'achat SCI"><br>
 
       <label for="campaign-content">Contenu de la lettre :</label><br>
-      <textarea id="campaign-content" style="width:100%; height:120px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant"></textarea><br><br>
+      <textarea id="campaign-content" style="width:100%; height:120px; margin-bottom:15px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
 
-      <button id="send-campaign" class="button button-primary">Envoyer la campagne</button>
-      <button id="back-to-step-1" class="button" style="margin-left:10px;">Précédent</button>
+Exemple:
+Madame, Monsieur [NOM],
+
+Nous sommes intéressés par l'acquisition de votre SCI..."></textarea>
+
+      <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+        <h4 style="margin-top: 0;">💡 Conseils pour votre lettre :</h4>
+        <ul style="margin-bottom: 0; font-size: 14px;">
+          <li>Utilisez <code>[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
+          <li>Soyez professionnel et courtois</li>
+          <li>Précisez clairement votre demande</li>
+          <li>Ajoutez vos coordonnées de contact</li>
+        </ul>
+      </div>
+
+      <button id="send-campaign" class="button button-primary" style="font-size: 16px; padding: 8px 16px;">
+        💳 Continuer vers le paiement
+      </button>
+      <button id="back-to-step-1" class="button" style="margin-left:10px;">← Précédent</button>
       <button id="close-popup-2" class="button" style="margin-left:10px;">Fermer</button>
     </div>
 
   </div>
 </div>
-
-
-
 
     <?php
 }
@@ -343,10 +364,28 @@ function sci_enqueue_admin_scripts() {
         true
     );
 
+    // Nouveau script pour le paiement
+    wp_enqueue_script(
+        'sci-payment-js',
+        plugin_dir_url(__FILE__) . 'assets/js/payment.js',
+        array(), 
+        '1.0',
+        true
+    );
+
     // Localisation des variables AJAX pour le script favoris
     wp_localize_script('sci-favoris', 'sci_ajax', array(
         'ajax_url' => admin_url('admin-ajax.php'),
         'nonce' => wp_create_nonce('sci_favoris_nonce')
+    ));
+
+    // Localisation pour le paiement
+    $woocommerce_integration = sci_woocommerce();
+    wp_localize_script('sci-payment-js', 'sciPaymentData', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('sci_campaign_nonce'),
+        'unit_price' => $woocommerce_integration->get_unit_price(),
+        'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready()
     ));
 
     // Facultatif : ajouter ton CSS si besoin
