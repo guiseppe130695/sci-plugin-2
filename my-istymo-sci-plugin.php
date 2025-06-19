@@ -36,6 +36,16 @@ function sci_ajouter_menu() {
         'sci-favoris',
         'sci_favoris_page'
     );
+
+    // Ajouter une page pour voir les logs d'API
+    add_submenu_page(
+        'sci-panel',
+        'Logs API',
+        'Logs API',
+        'manage_options',
+        'sci-logs',
+        'sci_logs_page'
+    );
 }
 
 
@@ -400,13 +410,20 @@ function sci_envoyer_lettre_laposte_ajax() {
         return;
     }
 
+    // Logger le payload avant envoi (sans le PDF pour éviter les logs trop volumineux)
+    $payload_for_log = $payload;
+    $payload_for_log['fichier']['contenu_base64'] = '[PDF_BASE64_CONTENT_' . strlen($pdf_base64) . '_CHARS]';
+    lettre_laposte_log("=== ENVOI LETTRE POUR {$entry['denomination']} ===");
+    lettre_laposte_log("Payload envoyé: " . json_encode($payload_for_log, JSON_PRETTY_PRINT));
+
     // Envoyer via l'API La Poste
     $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $token);
 
-    // Logger l'envoi
-    lettre_laposte_log("Envoi lettre pour {$entry['denomination']} (SIREN: {$entry['siren']})");
+    // Logger la réponse complète
+    lettre_laposte_log("Réponse complète API: " . json_encode($response, JSON_PRETTY_PRINT));
 
     if ($response['success']) {
+        lettre_laposte_log("✅ SUCCÈS pour {$entry['denomination']} - UID: " . ($response['uid'] ?? 'N/A'));
         wp_send_json_success([
             'message' => 'Lettre envoyée avec succès',
             'uid' => $response['uid'] ?? 'non disponible',
@@ -422,7 +439,10 @@ function sci_envoyer_lettre_laposte_ajax() {
             $error_msg .= 'Erreur inconnue';
         }
 
-        lettre_laposte_log("Erreur envoi pour {$entry['denomination']}: $error_msg");
+        lettre_laposte_log("❌ ERREUR pour {$entry['denomination']}: $error_msg");
+        lettre_laposte_log("Code HTTP: " . ($response['code'] ?? 'N/A'));
+        lettre_laposte_log("Message détaillé: " . json_encode($response['message'] ?? [], JSON_PRETTY_PRINT));
+        
         wp_send_json_error($error_msg);
     }
 }
@@ -447,10 +467,17 @@ function envoyer_lettre_via_api_la_poste_my_istymo($payload, $token) {
         'timeout' => 30,
     ];
 
+    // Logger la requête (sans le body pour éviter les logs trop volumineux)
+    lettre_laposte_log("=== REQUÊTE API LA POSTE ===");
+    lettre_laposte_log("URL: $api_url");
+    lettre_laposte_log("Headers: " . json_encode($headers, JSON_PRETTY_PRINT));
+    lettre_laposte_log("Body size: " . strlen($body) . " caractères");
+
     $response = wp_remote_post($api_url, $args);
 
     // Gestion des erreurs WordPress
     if (is_wp_error($response)) {
+        lettre_laposte_log("❌ Erreur WordPress HTTP: " . $response->get_error_message());
         return [
             'success' => false,
             'error'   => $response->get_error_message(),
@@ -459,21 +486,33 @@ function envoyer_lettre_via_api_la_poste_my_istymo($payload, $token) {
 
     $code = wp_remote_retrieve_response_code($response);
     $response_body = wp_remote_retrieve_body($response);
-    $data = json_decode($response_body, true);
+    $response_headers = wp_remote_retrieve_headers($response);
+    
+    // Logger la réponse complète
+    lettre_laposte_log("=== RÉPONSE API LA POSTE ===");
+    lettre_laposte_log("Code HTTP: $code");
+    lettre_laposte_log("Headers de réponse: " . json_encode($response_headers->getAll(), JSON_PRETTY_PRINT));
+    lettre_laposte_log("Body de réponse: $response_body");
 
-    lettre_laposte_log("Réponse API ($code) : $response_body");
+    $data = json_decode($response_body, true);
+    
+    // Logger les données décodées
+    lettre_laposte_log("Données JSON décodées: " . json_encode($data, JSON_PRETTY_PRINT));
 
     if ($code >= 200 && $code < 300) {
+        lettre_laposte_log("✅ Succès API (code $code)");
         return [
             'success' => true,
             'data'    => $data,
             'uid'     => $data['uid'] ?? null, // ✅ Extraction de l'UID
         ];
     } else {
+        lettre_laposte_log("❌ Erreur API (code $code)");
         return [
             'success' => false,
             'code'    => $code,
             'message' => $data,
+            'raw_response' => $response_body,
         ];
     }
 }
@@ -561,6 +600,75 @@ function sci_favoris_page() {
     });
     </script>
     <?php
+}
+
+// --- PAGE POUR AFFICHER LES LOGS D'API ---
+function sci_logs_page() {
+    ?>
+    <div class="wrap">
+        <h1>📋 Logs API La Poste</h1>
+        <p>Consultez ici les logs détaillés des appels à l'API La Poste pour diagnostiquer les erreurs.</p>
+        
+        <div style="background: #f1f1f1; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <h3>🔍 Derniers logs</h3>
+            <?php
+            $upload_dir = wp_upload_dir();
+            $log_file = $upload_dir['basedir'] . '/lettre-laposte/logs.txt';
+            
+            if (file_exists($log_file)) {
+                $logs = file_get_contents($log_file);
+                $log_lines = explode("\n", $logs);
+                $recent_logs = array_slice($log_lines, -100); // 100 dernières lignes
+                
+                echo '<div style="background: #fff; padding: 10px; border: 1px solid #ccc; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap;">';
+                echo esc_html(implode("\n", $recent_logs));
+                echo '</div>';
+                
+                echo '<p><strong>Fichier de log :</strong> ' . esc_html($log_file) . '</p>';
+                echo '<p><strong>Taille :</strong> ' . size_format(filesize($log_file)) . '</p>';
+                echo '<p><strong>Dernière modification :</strong> ' . date('Y-m-d H:i:s', filemtime($log_file)) . '</p>';
+            } else {
+                echo '<p>Aucun fichier de log trouvé. Les logs apparaîtront après le premier envoi de lettre.</p>';
+            }
+            ?>
+        </div>
+        
+        <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px;">
+            <h4>💡 Comment utiliser ces logs :</h4>
+            <ul>
+                <li><strong>Payload envoyé :</strong> Vérifiez que toutes les données sont correctement formatées</li>
+                <li><strong>Code HTTP :</strong> 
+                    <ul>
+                        <li>200-299 = Succès</li>
+                        <li>400-499 = Erreur client (données invalides, authentification, etc.)</li>
+                        <li>500-599 = Erreur serveur</li>
+                    </ul>
+                </li>
+                <li><strong>Body de réponse :</strong> Contient les détails de l'erreur retournée par l'API</li>
+                <li><strong>Headers :</strong> Informations sur l'authentification et le format des données</li>
+            </ul>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <a href="<?php echo admin_url('admin.php?page=sci-logs&clear=1'); ?>" 
+               class="button button-secondary"
+               onclick="return confirm('Êtes-vous sûr de vouloir effacer tous les logs ?')">
+                🗑️ Effacer les logs
+            </a>
+        </div>
+    </div>
+    
+    <?php
+    // Gestion de l'effacement des logs
+    if (isset($_GET['clear']) && $_GET['clear'] == '1') {
+        $upload_dir = wp_upload_dir();
+        $log_file = $upload_dir['basedir'] . '/lettre-laposte/logs.txt';
+        if (file_exists($log_file)) {
+            unlink($log_file);
+            echo '<div class="notice notice-success"><p>Logs effacés avec succès.</p></div>';
+            echo '<script>window.location.href = "' . admin_url('admin.php?page=sci-logs') . '";</script>';
+        }
+    }
 }
 
 add_action('wp_ajax_sci_generer_pdfs', 'sci_generer_pdfs');
