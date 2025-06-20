@@ -1,26 +1,45 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Remplacer la fonction d'envoi de campagne existante
-    const originalSendCampaignBtn = document.getElementById('send-campaign');
-    if (originalSendCampaignBtn) {
-        // Supprimer l'ancien event listener et en ajouter un nouveau
-        originalSendCampaignBtn.replaceWith(originalSendCampaignBtn.cloneNode(true));
-        
-        const sendCampaignBtn = document.getElementById('send-campaign');
-        sendCampaignBtn.addEventListener('click', handleCampaignValidation);
+    // Attendre que lettre.js soit chargé
+    setTimeout(function() {
+        attachPaymentHandlers();
+    }, 100);
+    
+    function attachPaymentHandlers() {
+        // Remplacer la fonction d'envoi de campagne existante
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'send-campaign') {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCampaignValidation();
+            }
+        });
     }
     
     function handleCampaignValidation() {
         const campaignTitle = document.getElementById('campaign-title');
         const campaignContent = document.getElementById('campaign-content');
-        const selectedEntries = getSelectedEntries();
+        
+        if (!campaignTitle || !campaignContent) {
+            showValidationError('Éléments de formulaire introuvables');
+            return;
+        }
         
         if (!campaignTitle.value.trim() || !campaignContent.value.trim()) {
             showValidationError('Veuillez remplir le titre et le contenu de la campagne');
             return;
         }
         
+        const selectedEntries = window.getSelectedEntries ? window.getSelectedEntries() : [];
+        
         if (selectedEntries.length === 0) {
             showValidationError('Aucune SCI sélectionnée');
+            return;
+        }
+        
+        // Vérifier si WooCommerce est disponible
+        if (!sciPaymentData.woocommerce_ready) {
+            // Fallback vers l'ancien système d'envoi direct
+            handleDirectSending(selectedEntries, campaignTitle.value, campaignContent.value);
             return;
         }
         
@@ -28,22 +47,183 @@ document.addEventListener('DOMContentLoaded', function() {
         showRecapStep(selectedEntries, campaignTitle.value, campaignContent.value);
     }
     
-    function getSelectedEntries() {
-        const checkboxes = document.querySelectorAll('.send-letter-checkbox:checked');
-        const entries = [];
+    function handleDirectSending(entries, title, content) {
+        if (!confirm('WooCommerce n\'est pas disponible. Voulez-vous envoyer directement les lettres (sans paiement) ?')) {
+            return;
+        }
         
-        checkboxes.forEach(checkbox => {
-            entries.push({
-                denomination: checkbox.getAttribute('data-denomination'),
-                dirigeant: checkbox.getAttribute('data-dirigeant'),
-                siren: checkbox.getAttribute('data-siren'),
-                adresse: checkbox.getAttribute('data-adresse'),
-                ville: checkbox.getAttribute('data-ville'),
-                code_postal: checkbox.getAttribute('data-code-postal')
-            });
+        const step2 = document.getElementById('step-2');
+        
+        // Afficher le processus d'envoi direct
+        step2.innerHTML = `
+            <h2>📬 Envoi en cours</h2>
+            <div class="processing-container">
+                <div class="processing-icon">⏳</div>
+                <div class="processing-text">Génération des PDFs...</div>
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" id="direct-progress"></div>
+                </div>
+                <div class="processing-subtext">Préparation des lettres...</div>
+            </div>
+        `;
+        
+        // Désactiver le bouton pendant l'envoi
+        const sendBtn = document.getElementById('send-letters-btn');
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Envoi en cours...';
+        }
+        
+        // Préparer les données pour l'envoi
+        const campaignData = {
+            title: title,
+            content: content,
+            entries: entries
+        };
+        
+        // Étape 1: Générer les PDFs et créer la campagne en BDD
+        const formData = new FormData();
+        formData.append('action', 'sci_generer_pdfs');
+        formData.append('data', JSON.stringify(campaignData));
+        formData.append('nonce', sciPaymentData.nonce);
+        
+        fetch(ajaxurl, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.data.files && data.data.campaign_id) {
+                // Étape 2: Envoyer chaque lettre via l'API La Poste
+                updateDirectProgress(30, 'Envoi des lettres...');
+                
+                return sendLettersSequentially(data.data.files, entries, campaignData, data.data.campaign_id);
+            } else {
+                throw new Error('Erreur lors de la génération des PDFs: ' + (data.data || 'Erreur inconnue'));
+            }
+        })
+        .then(results => {
+            // Afficher les résultats
+            const successCount = results.filter(r => r.success).length;
+            const errorCount = results.length - successCount;
+            
+            updateDirectProgress(100, 'Envoi terminé !');
+            
+            setTimeout(() => {
+                let message = `✅ Campagne terminée !\n\n`;
+                message += `📊 Résultats :\n`;
+                message += `• ${successCount} lettres envoyées avec succès\n`;
+                if (errorCount > 0) {
+                    message += `• ${errorCount} erreurs d'envoi\n`;
+                }
+                message += `\n📋 Consultez le détail dans "SCI > Mes Campagnes"`;
+                
+                alert(message);
+                
+                // Fermer le popup et réinitialiser
+                document.getElementById('letters-popup').style.display = 'none';
+                if (window.resetSciPopup) window.resetSciPopup();
+            }, 1000);
+            
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            alert('Erreur lors de l\'envoi : ' + error.message);
+        })
+        .finally(() => {
+            // Réactiver le bouton
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '📬 Créer une campagne (0)';
+            }
         });
+    }
+    
+    function updateDirectProgress(percent, text) {
+        const progressBar = document.getElementById('direct-progress');
+        const statusText = document.querySelector('.processing-text');
         
-        return entries;
+        if (progressBar) {
+            animateProgress(progressBar, progressBar.style.width.replace('%', '') || 0, percent, 500);
+        }
+        
+        if (statusText) {
+            statusText.textContent = text;
+        }
+    }
+    
+    // Fonction pour envoyer les lettres séquentiellement (reprise de l'ancien code)
+    async function sendLettersSequentially(pdfFiles, entries, campaignData, campaignId) {
+        const results = [];
+        
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const pdfFile = pdfFiles[i];
+            
+            updateDirectProgress(30 + (i / entries.length) * 60, `Envoi vers ${entry.denomination}...`);
+            
+            try {
+                // Télécharger le PDF généré
+                const pdfResponse = await fetch(pdfFile.url);
+                const pdfBlob = await pdfResponse.blob();
+                const pdfBase64 = await blobToBase64(pdfBlob);
+                
+                // Préparer les données pour l'API La Poste
+                const letterData = new FormData();
+                letterData.append('action', 'sci_envoyer_lettre_laposte');
+                letterData.append('entry', JSON.stringify(entry));
+                letterData.append('pdf_base64', pdfBase64);
+                letterData.append('campaign_title', campaignData.title);
+                letterData.append('campaign_id', campaignId);
+                
+                // Envoyer via AJAX
+                const response = await fetch(ajaxurl, {
+                    method: 'POST',
+                    body: letterData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    results.push({
+                        success: true,
+                        denomination: entry.denomination,
+                        uid: result.data.uid
+                    });
+                } else {
+                    results.push({
+                        success: false,
+                        denomination: entry.denomination,
+                        error: result.data || 'Erreur inconnue'
+                    });
+                }
+                
+            } catch (error) {
+                results.push({
+                    success: false,
+                    denomination: entry.denomination,
+                    error: error.message
+                });
+            }
+            
+            // Petite pause entre les envois
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        return results;
+    }
+    
+    // Fonction utilitaire pour convertir un blob en base64
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64 = reader.result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
     
     function showRecapStep(entries, title, content) {
@@ -149,7 +329,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('close-popup-recap').addEventListener('click', function() {
             if (confirm('Êtes-vous sûr de vouloir annuler ? Votre campagne ne sera pas sauvegardée.')) {
                 document.getElementById('letters-popup').style.display = 'none';
-                resetPopup();
+                if (window.resetSciPopup) window.resetSciPopup();
             }
         });
     }
@@ -244,7 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('close-popup-payment').addEventListener('click', function() {
             if (confirm('Êtes-vous sûr de vouloir annuler ? Votre campagne ne sera pas sauvegardée.')) {
                 document.getElementById('letters-popup').style.display = 'none';
-                resetPopup();
+                if (window.resetSciPopup) window.resetSciPopup();
             }
         });
     }
@@ -311,9 +491,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Créer un iframe optimisé pour le checkout
         const iframe = document.createElement('iframe');
-        iframe.src = checkoutUrl + '&embedded=1&hide_admin_bar=1'; // Paramètres pour optimiser l'affichage
+        iframe.src = checkoutUrl + '&embedded=1&hide_admin_bar=1';
         iframe.style.width = '100%';
-        iframe.style.height = '700px'; // Hauteur augmentée pour plus de confort
+        iframe.style.height = '700px';
         iframe.style.border = 'none';
         iframe.style.borderRadius = '8px';
         iframe.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
@@ -350,14 +530,15 @@ document.addEventListener('DOMContentLoaded', function() {
             // Event listeners pour la navigation
             document.getElementById('back-to-recap-from-checkout').onclick = function() {
                 if (confirm('Êtes-vous sûr de vouloir revenir au récapitulatif ? La commande en cours sera annulée.')) {
-                    showRecapStep(getSelectedEntries(), 
-                        document.getElementById('campaign-title')?.value || '', 
-                        document.getElementById('campaign-content')?.value || '');
+                    const entries = window.getSelectedEntries ? window.getSelectedEntries() : [];
+                    const title = document.getElementById('campaign-title')?.value || '';
+                    const content = document.getElementById('campaign-content')?.value || '';
+                    showRecapStep(entries, title, content);
                 }
             };
             
             document.getElementById('refresh-checkout').onclick = function() {
-                iframe.src = iframe.src; // Recharger l'iframe
+                iframe.src = iframe.src;
             };
         }, 1000);
         
@@ -395,7 +576,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => {
                 console.error('Erreur lors de la vérification du statut:', error);
             });
-        }, 3000); // Vérifier toutes les 3 secondes
+        }, 3000);
         
         // Arrêter le polling après 15 minutes
         setTimeout(() => {
@@ -417,7 +598,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Event listener pour le bouton "Voir mes campagnes"
         document.getElementById('view-campaigns').addEventListener('click', function() {
             document.getElementById('letters-popup').style.display = 'none';
-            resetPopup();
+            if (window.resetSciPopup) window.resetSciPopup();
             window.location.href = sciPaymentData.campaigns_url || (window.location.origin + '/wp-admin/admin.php?page=sci-campaigns');
         });
         
@@ -427,7 +608,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('view-campaigns').click();
             } else {
                 document.getElementById('letters-popup').style.display = 'none';
-                resetPopup();
+                if (window.resetSciPopup) window.resetSciPopup();
             }
         }, 15000);
     }
@@ -464,45 +645,48 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const contentHtml = `
             <h2>✍️ Contenu de la campagne</h2>
-            <label for="campaign-title">Titre de la campagne :</label><br>
-            <input type="text" id="campaign-title" style="width:100%; margin-bottom:15px;" required placeholder="Ex: Proposition d'achat SCI" value="${escapeHtml(title)}"><br>
+            <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre lettre</p>
+            
+            <label for="campaign-title"><strong>Titre de la campagne :</strong></label><br>
+            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'achat SCI" value="${escapeHtml(title)}"><br>
 
-            <label for="campaign-content">Contenu de la lettre :</label><br>
-            <textarea id="campaign-content" style="width:100%; height:120px; margin-bottom:15px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
+            <label for="campaign-content"><strong>Contenu de la lettre :</strong></label><br>
+            <textarea id="campaign-content" style="width:100%; height:150px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
 
 Exemple:
 Madame, Monsieur [NOM],
 
 Nous sommes intéressés par l'acquisition de votre SCI...">${escapeHtml(content)}</textarea>
 
-            <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-                <h4 style="margin-top: 0;">💡 Conseils pour votre lettre :</h4>
-                <ul style="margin-bottom: 0; font-size: 14px;">
-                    <li>Utilisez <code>[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
-                    <li>Soyez professionnel et courtois</li>
-                    <li>Précisez clairement votre demande</li>
-                    <li>Ajoutez vos coordonnées de contact</li>
+            <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
+                <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre lettre :</h4>
+                <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
+                    <li>Utilisez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
+                    <li>Soyez professionnel et courtois dans votre approche</li>
+                    <li>Précisez clairement l'objet de votre demande</li>
+                    <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
                 </ul>
             </div>
 
-            <button id="send-campaign" class="button button-primary" style="font-size: 16px; padding: 8px 16px;">
-                📋 Voir le récapitulatif →
-            </button>
-            <button id="back-to-step-1" class="button" style="margin-left:10px;">← Précédent</button>
-            <button id="close-popup-2" class="button" style="margin-left:10px;">Fermer</button>
+            <div style="text-align: center;">
+                <button id="send-campaign" class="button button-primary button-large">
+                    📋 Voir le récapitulatif →
+                </button>
+                <button id="back-to-step-1" class="button" style="margin-left:15px;">← Précédent</button>
+                <button id="close-popup-2" class="button" style="margin-left:15px;">Fermer</button>
+            </div>
         `;
         
         step2.innerHTML = contentHtml;
         
         // Réattacher les event listeners
-        document.getElementById('send-campaign').addEventListener('click', handleCampaignValidation);
         document.getElementById('back-to-step-1').addEventListener('click', function() {
             document.getElementById('step-2').style.display = 'none';
             document.getElementById('step-1').style.display = 'block';
         });
         document.getElementById('close-popup-2').addEventListener('click', function() {
             document.getElementById('letters-popup').style.display = 'none';
-            resetPopup();
+            if (window.resetSciPopup) window.resetSciPopup();
         });
     }
     
@@ -553,32 +737,6 @@ Nous sommes intéressés par l'acquisition de votre SCI...">${escapeHtml(content
     
     function showPaymentError(message) {
         alert('Erreur de paiement : ' + message);
-    }
-    
-    function resetPopup() {
-        // Réinitialiser les sélections
-        const checkboxes = document.querySelectorAll('.send-letter-checkbox');
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = false;
-        });
-        
-        // Réinitialiser les champs
-        const titleField = document.getElementById('campaign-title');
-        const contentField = document.getElementById('campaign-content');
-        if (titleField) titleField.value = '';
-        if (contentField) contentField.value = '';
-        
-        // Mettre à jour le compteur
-        const selectedCount = document.getElementById('selected-count');
-        if (selectedCount) selectedCount.textContent = '0';
-        
-        // Désactiver le bouton
-        const sendBtn = document.getElementById('send-letters-btn');
-        if (sendBtn) sendBtn.disabled = true;
-        
-        // Revenir à l'étape 1
-        document.getElementById('step-1').style.display = 'block';
-        document.getElementById('step-2').style.display = 'none';
     }
     
     function escapeHtml(text) {

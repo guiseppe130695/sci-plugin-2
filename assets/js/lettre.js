@@ -8,13 +8,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const step1 = document.getElementById('step-1');
     const step2 = document.getElementById('step-2');
     const selectedSciList = document.getElementById('selected-sci-list');
-    const campaignTitle = document.getElementById('campaign-title');
-    const campaignContent = document.getElementById('campaign-content');
     
     // Boutons de navigation
     const toStep2Btn = document.getElementById('to-step-2');
-    const backToStep1Btn = document.getElementById('back-to-step-1');
-    const sendCampaignBtn = document.getElementById('send-campaign');
     const closePopupBtns = document.querySelectorAll('#close-popup-1, #close-popup-2');
     
     let selectedEntries = [];
@@ -78,19 +74,11 @@ document.addEventListener('DOMContentLoaded', function() {
         step2.style.display = 'block';
     });
 
-    // Retour à l'étape 1
-    backToStep1Btn.addEventListener('click', function() {
-        step2.style.display = 'none';
-        step1.style.display = 'block';
-    });
-
     // Fermer le popup
     closePopupBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             lettersPopup.style.display = 'none';
-            // Réinitialiser les champs
-            campaignTitle.value = '';
-            campaignContent.value = '';
+            resetPopup();
         });
     });
 
@@ -98,193 +86,103 @@ document.addEventListener('DOMContentLoaded', function() {
     lettersPopup.addEventListener('click', function(e) {
         if (e.target === lettersPopup) {
             lettersPopup.style.display = 'none';
+            resetPopup();
         }
     });
 
-    // Fonction pour afficher le progrès d'envoi
-    function showProgress(current, total, message) {
-        const progressHtml = `
-            <div style="margin: 20px 0; padding: 15px; background: #f0f8ff; border: 1px solid #0073aa; border-radius: 4px;">
-                <div style="font-weight: bold; margin-bottom: 10px;">📬 Envoi en cours...</div>
-                <div style="background: #ddd; height: 20px; border-radius: 10px; overflow: hidden;">
-                    <div style="background: #0073aa; height: 100%; width: ${(current/total)*100}%; transition: width 0.3s;"></div>
-                </div>
-                <div style="margin-top: 10px; font-size: 14px;">
-                    ${current}/${total} lettres envoyées
-                </div>
-                <div style="margin-top: 5px; font-size: 12px; color: #666;">
-                    ${message}
-                </div>
+    function resetPopup() {
+        // Réinitialiser les champs
+        const campaignTitle = document.getElementById('campaign-title');
+        const campaignContent = document.getElementById('campaign-content');
+        if (campaignTitle) campaignTitle.value = '';
+        if (campaignContent) campaignContent.value = '';
+        
+        // Revenir à l'étape 1
+        step1.style.display = 'block';
+        step2.style.display = 'none';
+        
+        // Réinitialiser le contenu de l'étape 2 au contenu original
+        resetStep2Content();
+    }
+
+    function resetStep2Content() {
+        step2.innerHTML = `
+            <h2>✍️ Contenu de la campagne</h2>
+            <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre lettre</p>
+            
+            <label for="campaign-title"><strong>Titre de la campagne :</strong></label><br>
+            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'achat SCI"><br>
+
+            <label for="campaign-content"><strong>Contenu de la lettre :</strong></label><br>
+            <textarea id="campaign-content" style="width:100%; height:150px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
+
+Exemple:
+Madame, Monsieur [NOM],
+
+Nous sommes intéressés par l'acquisition de votre SCI..."></textarea>
+
+            <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
+                <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre lettre :</h4>
+                <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
+                    <li>Utilisez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
+                    <li>Soyez professionnel et courtois dans votre approche</li>
+                    <li>Précisez clairement l'objet de votre demande</li>
+                    <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
+                </ul>
+            </div>
+
+            <div style="text-align: center;">
+                <button id="send-campaign" class="button button-primary button-large">
+                    📋 Voir le récapitulatif →
+                </button>
+                <button id="back-to-step-1" class="button" style="margin-left:15px;">← Précédent</button>
+                <button id="close-popup-2" class="button" style="margin-left:15px;">Fermer</button>
             </div>
         `;
         
-        // Remplacer le contenu de l'étape 2
-        step2.innerHTML = progressHtml;
+        // Réattacher les event listeners
+        attachStep2Listeners();
     }
 
-    // Envoyer la campagne
-    sendCampaignBtn.addEventListener('click', function() {
-        const title = campaignTitle.value.trim();
-        const content = campaignContent.value.trim();
+    function attachStep2Listeners() {
+        const backToStep1Btn = document.getElementById('back-to-step-1');
+        const closePopup2Btn = document.getElementById('close-popup-2');
         
-        if (!title || !content) {
-            alert('Veuillez remplir le titre et le contenu de la campagne');
-            return;
-        }
-        
-        // Désactiver le bouton pendant l'envoi
-        sendCampaignBtn.disabled = true;
-        sendCampaignBtn.textContent = 'Génération des PDFs...';
-        
-        // Préparer les données pour l'envoi
-        const campaignData = {
-            title: title,
-            content: content,
-            entries: selectedEntries
-        };
-        
-        // Étape 1: Générer les PDFs et créer la campagne en BDD
-        const formData = new FormData();
-        formData.append('action', 'sci_generer_pdfs');
-        formData.append('data', JSON.stringify(campaignData));
-        
-        fetch(ajaxurl, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.data.files && data.data.campaign_id) {
-                // Étape 2: Envoyer chaque lettre via l'API La Poste
-                sendCampaignBtn.textContent = 'Envoi des lettres...';
-                showProgress(0, selectedEntries.length, 'Préparation de l\'envoi...');
-                
-                return sendLettersSequentially(data.data.files, selectedEntries, campaignData, data.data.campaign_id);
-            } else {
-                throw new Error('Erreur lors de la génération des PDFs: ' + (data.data || 'Erreur inconnue'));
-            }
-        })
-        .then(results => {
-            // Afficher les résultats
-            const successCount = results.filter(r => r.success).length;
-            const errorCount = results.length - successCount;
-            
-            let message = `✅ Campagne terminée !\n\n`;
-            message += `📊 Résultats :\n`;
-            message += `• ${successCount} lettres envoyées avec succès\n`;
-            if (errorCount > 0) {
-                message += `• ${errorCount} erreurs d'envoi\n`;
-            }
-            message += `\n📋 Consultez le détail dans "SCI > Mes Campagnes"`;
-            
-            // Afficher les détails des erreurs si nécessaire
-            const errors = results.filter(r => !r.success);
-            if (errors.length > 0) {
-                message += `\n\n❌ Erreurs :\n`;
-                errors.forEach((error, index) => {
-                    message += `• ${error.denomination}: ${error.error}\n`;
-                });
-            }
-            
-            alert(message);
-            
-            // Fermer le popup
-            lettersPopup.style.display = 'none';
-            
-            // Réinitialiser les sélections
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = false;
+        if (backToStep1Btn) {
+            backToStep1Btn.addEventListener('click', function() {
+                step2.style.display = 'none';
+                step1.style.display = 'block';
             });
-            updateSelectedCount();
-            
-        })
-        .catch(error => {
-            console.error('Erreur:', error);
-            alert('Erreur lors de l\'envoi : ' + error.message);
-        })
-        .finally(() => {
-            // Réactiver le bouton
-            sendCampaignBtn.disabled = false;
-            sendCampaignBtn.textContent = 'Envoyer la campagne';
-        });
-    });
-
-    // Fonction pour envoyer les lettres séquentiellement
-    async function sendLettersSequentially(pdfFiles, entries, campaignData, campaignId) {
-        const results = [];
-        
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            const pdfFile = pdfFiles[i];
-            
-            showProgress(i, entries.length, `Envoi vers ${entry.denomination}...`);
-            
-            try {
-                // Télécharger le PDF généré
-                const pdfResponse = await fetch(pdfFile.url);
-                const pdfBlob = await pdfResponse.blob();
-                const pdfBase64 = await blobToBase64(pdfBlob);
-                
-                // Préparer les données pour l'API La Poste
-                const letterData = new FormData();
-                letterData.append('action', 'sci_envoyer_lettre_laposte');
-                letterData.append('entry', JSON.stringify(entry));
-                letterData.append('pdf_base64', pdfBase64);
-                letterData.append('campaign_title', campaignData.title);
-                letterData.append('campaign_id', campaignId); // Ajouter l'ID de campagne
-                
-                // Envoyer via AJAX
-                const response = await fetch(ajaxurl, {
-                    method: 'POST',
-                    body: letterData
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    results.push({
-                        success: true,
-                        denomination: entry.denomination,
-                        uid: result.data.uid
-                    });
-                } else {
-                    results.push({
-                        success: false,
-                        denomination: entry.denomination,
-                        error: result.data || 'Erreur inconnue'
-                    });
-                }
-                
-            } catch (error) {
-                results.push({
-                    success: false,
-                    denomination: entry.denomination,
-                    error: error.message
-                });
-            }
-            
-            // Petite pause entre les envois pour éviter de surcharger l'API
-            await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
-        showProgress(entries.length, entries.length, 'Envoi terminé !');
-        
-        return results;
+        if (closePopup2Btn) {
+            closePopup2Btn.addEventListener('click', function() {
+                lettersPopup.style.display = 'none';
+                resetPopup();
+            });
+        }
     }
 
-    // Fonction utilitaire pour convertir un blob en base64
-    function blobToBase64(blob) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const base64 = reader.result.split(',')[1]; // Enlever le préfixe data:
-                resolve(base64);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    }
+    // Initialiser le contenu de l'étape 2
+    resetStep2Content();
 
     // Initialiser le compteur
     updateSelectedCount();
+
+    // Fonction utilitaire pour obtenir les entrées sélectionnées (utilisée par payment.js)
+    window.getSelectedEntries = function() {
+        return selectedEntries;
+    };
+
+    // Fonction utilitaire pour réinitialiser le popup (utilisée par payment.js)
+    window.resetSciPopup = function() {
+        resetPopup();
+        
+        // Réinitialiser les sélections
+        const checkboxes = document.querySelectorAll('.send-letter-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        updateSelectedCount();
+    };
 });

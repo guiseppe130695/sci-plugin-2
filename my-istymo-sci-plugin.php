@@ -2,7 +2,7 @@
 /*
 Plugin Name: SCI
 Description: Plugin personnalisé SCI avec un panneau admin et un sélecteur de codes postaux.
-Version: 1.4
+Version: 1.5
 Author: Brio Guiseppe
 */
 
@@ -86,7 +86,7 @@ function sci_afficher_panel() {
     // Vérifier WooCommerce
     $woocommerce_integration = sci_woocommerce();
     if (!$woocommerce_integration->is_woocommerce_ready()) {
-        echo '<div class="notice notice-warning"><p><strong>⚠️ WooCommerce requis :</strong> Veuillez installer et configurer WooCommerce pour utiliser le système de paiement.</p></div>';
+        echo '<div class="notice notice-warning"><p><strong>⚠️ WooCommerce requis :</strong> Veuillez installer et configurer WooCommerce pour utiliser le système de paiement. <br><small>En attendant, vous pouvez utiliser le mode envoi direct (sans paiement).</small></p></div>';
     }
 
     // Vérifier la configuration des données expéditeur
@@ -222,39 +222,9 @@ function sci_afficher_panel() {
       </div>
     </div>
 
-    <!-- Étape 2 : Saisie titre et contenu lettre -->
+    <!-- Étape 2 : Saisie titre et contenu lettre (sera remplacée dynamiquement) -->
     <div class="step" id="step-2" style="display:none;">
-      <h2>✍️ Contenu de la campagne</h2>
-      <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre lettre</p>
-      
-      <label for="campaign-title"><strong>Titre de la campagne :</strong></label><br>
-      <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'achat SCI"><br>
-
-      <label for="campaign-content"><strong>Contenu de la lettre :</strong></label><br>
-      <textarea id="campaign-content" style="width:100%; height:150px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
-
-Exemple:
-Madame, Monsieur [NOM],
-
-Nous sommes intéressés par l'acquisition de votre SCI..."></textarea>
-
-      <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
-        <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre lettre :</h4>
-        <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
-          <li>Utilisez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
-          <li>Soyez professionnel et courtois dans votre approche</li>
-          <li>Précisez clairement l'objet de votre demande</li>
-          <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
-        </ul>
-      </div>
-
-      <div style="text-align: center;">
-        <button id="send-campaign" class="button button-primary button-large">
-          📋 Voir le récapitulatif →
-        </button>
-        <button id="back-to-step-1" class="button" style="margin-left:15px;">← Précédent</button>
-        <button id="close-popup-2" class="button" style="margin-left:15px;">Fermer</button>
-      </div>
+      <!-- Le contenu sera généré par JavaScript -->
     </div>
 
   </div>
