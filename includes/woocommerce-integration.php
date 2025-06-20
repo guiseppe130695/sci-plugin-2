@@ -16,12 +16,16 @@ class SCI_WooCommerce_Integration {
         add_action('wp_ajax_sci_check_order_status', array($this, 'check_order_status_ajax'));
         add_action('wp_ajax_nopriv_sci_check_order_status', array($this, 'check_order_status_ajax'));
         
-        // Hook pour traiter les commandes payées
+        // Hooks pour traiter les commandes payées - TOUS LES STATUTS POSSIBLES
         add_action('woocommerce_order_status_completed', array($this, 'process_paid_campaign'));
         add_action('woocommerce_order_status_processing', array($this, 'process_paid_campaign'));
+        add_action('woocommerce_order_status_on-hold', array($this, 'process_paid_campaign')); // ✅ AJOUTÉ
         
         // Hook pour les paiements instantanés (cartes, PayPal, etc.)
         add_action('woocommerce_payment_complete', array($this, 'process_paid_campaign'));
+        
+        // Hook pour les changements de statut (catch-all)
+        add_action('woocommerce_order_status_changed', array($this, 'handle_status_change'), 10, 4);
         
         // Hooks pour personnaliser le checkout embarqué
         add_action('wp_head', array($this, 'add_checkout_scripts'));
@@ -38,6 +42,31 @@ class SCI_WooCommerce_Integration {
         // Créer le produit automatiquement s'il n'existe pas
         if (!$this->product_id || !get_post($this->product_id)) {
             $this->create_sci_product();
+        }
+    }
+    
+    /**
+     * Nouveau handler pour tous les changements de statut
+     */
+    public function handle_status_change($order_id, $old_status, $new_status, $order) {
+        lettre_laposte_log("=== CHANGEMENT STATUT COMMANDE ===");
+        lettre_laposte_log("Commande #$order_id: $old_status → $new_status");
+        
+        // Vérifier si c'est une commande SCI
+        $campaign_data = $order->get_meta('_sci_campaign_data');
+        if (!$campaign_data) {
+            lettre_laposte_log("❌ Pas une commande SCI");
+            return;
+        }
+        
+        // Statuts considérés comme "payés"
+        $paid_statuses = ['processing', 'completed', 'on-hold'];
+        
+        if (in_array($new_status, $paid_statuses)) {
+            lettre_laposte_log("✅ Statut payé détecté: $new_status");
+            $this->process_paid_campaign($order_id);
+        } else {
+            lettre_laposte_log("ℹ️ Statut non-payé: $new_status");
         }
     }
     
@@ -551,18 +580,21 @@ class SCI_WooCommerce_Integration {
     public function process_paid_campaign($order_id) {
         $order = wc_get_order($order_id);
         if (!$order) {
+            lettre_laposte_log("❌ Commande #$order_id introuvable");
             return;
         }
         
         // Vérifier si c'est une commande SCI
         $campaign_data = $order->get_meta('_sci_campaign_data');
         if (!$campaign_data) {
+            lettre_laposte_log("ℹ️ Commande #$order_id n'est pas une commande SCI");
             return; // Pas une commande SCI
         }
         
         // Vérifier si déjà traité
         $campaign_status = $order->get_meta('_sci_campaign_status');
-        if ($campaign_status === 'processed' || $campaign_status === 'processing') {
+        if ($campaign_status === 'processed' || $campaign_status === 'processing' || $campaign_status === 'scheduled') {
+            lettre_laposte_log("ℹ️ Commande #$order_id déjà traitée (statut: $campaign_status)");
             return; // Déjà traité
         }
         
@@ -605,18 +637,187 @@ class SCI_WooCommerce_Integration {
         // Sauvegarder l'ID de campagne
         $order->update_meta_data('_sci_campaign_id', $campaign_id);
         
-        // Programmer l'envoi des lettres (en arrière-plan)
-        wp_schedule_single_event(time() + 30, 'sci_process_paid_campaign', array($order_id, $campaign_id));
+        // ✅ TRAITEMENT IMMÉDIAT AU LIEU DE PROGRAMMER
+        lettre_laposte_log("🚀 Démarrage du traitement immédiat");
+        $this->process_campaign_immediately($order_id, $campaign_id, $campaign_data);
         
         $order->add_order_note(sprintf(
-            'Paiement confirmé. Campagne #%d créée. Envoi programmé.',
+            'Paiement confirmé. Campagne #%d créée. Traitement en cours.',
             $campaign_id
         ));
         
-        $order->update_meta_data('_sci_campaign_status', 'scheduled');
+        $order->update_meta_data('_sci_campaign_status', 'processing_letters');
         $order->save();
         
-        lettre_laposte_log("✅ Envoi programmé pour dans 30 secondes");
+        lettre_laposte_log("✅ Traitement immédiat démarré");
+    }
+    
+    /**
+     * ✅ NOUVEAU : Traitement immédiat de la campagne
+     */
+    private function process_campaign_immediately($order_id, $campaign_id, $campaign_data) {
+        lettre_laposte_log("=== DÉBUT TRAITEMENT IMMÉDIAT ===");
+        lettre_laposte_log("Commande #$order_id - Campagne #$campaign_id");
+        
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            lettre_laposte_log("❌ Commande introuvable");
+            return;
+        }
+        
+        lettre_laposte_log("Traitement de " . count($campaign_data['entries']) . " lettres");
+        
+        // Générer les PDFs
+        if (!class_exists('TCPDF')) {
+            require_once plugin_dir_path(__FILE__) . '../lib/tcpdf/tcpdf.php';
+        }
+        
+        $upload_dir = wp_upload_dir();
+        $pdf_dir = $upload_dir['basedir'] . '/campagnes/';
+        
+        // Créer le dossier s'il n'existe pas
+        if (!file_exists($pdf_dir)) {
+            wp_mkdir_p($pdf_dir);
+        }
+        
+        $pdf_files = array();
+        
+        foreach ($campaign_data['entries'] as $index => $entry) {
+            try {
+                lettre_laposte_log("Génération PDF " . ($index + 1) . " pour: " . ($entry['denomination'] ?? 'N/A'));
+                
+                $nom = $entry['dirigeant'] ?? 'Dirigeant';
+                $texte = str_replace('[NOM]', $nom, $campaign_data['content']);
+                
+                $pdf = new TCPDF();
+                $pdf->SetCreator('SCI Plugin');
+                $pdf->SetAuthor('SCI Plugin');
+                $pdf->SetTitle('Lettre pour ' . ($entry['denomination'] ?? 'SCI'));
+                
+                $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
+                $pdf->SetMargins(20, 20, 20);
+                $pdf->SetAutoPageBreak(TRUE, 25);
+                
+                $pdf->AddPage();
+                $pdf->SetFont('helvetica', '', 12);
+                $pdf->writeHTML(nl2br(htmlspecialchars($texte)), true, false, true, false, '');
+                
+                $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time() . '-' . $index) . '.pdf';
+                $filepath = $pdf_dir . $filename;
+                
+                $pdf->Output($filepath, 'F');
+                
+                if (file_exists($filepath)) {
+                    $pdf_files[] = array(
+                        'path' => $filepath,
+                        'entry' => $entry
+                    );
+                    
+                    lettre_laposte_log("✅ PDF généré: $filename");
+                } else {
+                    lettre_laposte_log("❌ Échec génération PDF pour: " . ($entry['denomination'] ?? 'N/A'));
+                }
+                
+            } catch (Exception $e) {
+                lettre_laposte_log("❌ Erreur génération PDF: " . $e->getMessage());
+            }
+        }
+        
+        lettre_laposte_log("PDFs générés: " . count($pdf_files) . "/" . count($campaign_data['entries']));
+        
+        // Envoyer les lettres une par une
+        $campaign_manager = sci_campaign_manager();
+        $config_manager = sci_config_manager();
+        
+        $success_count = 0;
+        $error_count = 0;
+        
+        foreach ($pdf_files as $index => $pdf_data) {
+            $entry = $pdf_data['entry'];
+            
+            lettre_laposte_log("Envoi lettre " . ($index + 1) . "/" . count($pdf_files) . " pour: " . ($entry['denomination'] ?? 'N/A'));
+            
+            // Lire le PDF et l'encoder en base64
+            $pdf_content = file_get_contents($pdf_data['path']);
+            $pdf_base64 = base64_encode($pdf_content);
+            
+            // Récupérer les données expéditeur
+            $expedition_data = $campaign_manager->get_user_expedition_data($order->get_customer_id());
+            
+            // Préparer le payload
+            $laposte_params = $config_manager->get_laposte_payload_params();
+            $payload = array_merge($laposte_params, [
+                "adresse_expedition" => $expedition_data,
+                "adresse_destination" => [
+                    "civilite" => "",
+                    "prenom" => "",
+                    "nom" => $entry['dirigeant'] ?? '',
+                    "nom_societe" => $entry['denomination'] ?? '',
+                    "adresse_ligne1" => $entry['adresse'] ?? '',
+                    "adresse_ligne2" => "",
+                    "code_postal" => $entry['code_postal'] ?? '',
+                    "ville" => $entry['ville'] ?? '',
+                    "pays" => "FRANCE",
+                ],
+                "fichier" => [
+                    "format" => "pdf",
+                    "contenu_base64" => $pdf_base64,
+                ],
+            ]);
+            
+            // Logger le payload (sans le PDF)
+            $payload_for_log = $payload;
+            $payload_for_log['fichier']['contenu_base64'] = '[PDF_BASE64_' . strlen($pdf_base64) . '_CHARS]';
+            lettre_laposte_log("Payload pour {$entry['denomination']}: " . json_encode($payload_for_log, JSON_PRETTY_PRINT));
+            
+            // Envoyer via l'API La Poste
+            $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $config_manager->get_laposte_token());
+            
+            if ($response['success']) {
+                $campaign_manager->update_letter_status(
+                    $campaign_id,
+                    $entry['siren'],
+                    'sent',
+                    $response['uid'] ?? null
+                );
+                $success_count++;
+                lettre_laposte_log("✅ Lettre envoyée - UID: " . ($response['uid'] ?? 'N/A'));
+            } else {
+                $error_msg = isset($response['message']) ? json_encode($response['message']) : ($response['error'] ?? 'Erreur inconnue');
+                $campaign_manager->update_letter_status(
+                    $campaign_id,
+                    $entry['siren'],
+                    'failed',
+                    null,
+                    $error_msg
+                );
+                $error_count++;
+                lettre_laposte_log("❌ Erreur envoi: $error_msg");
+            }
+            
+            // Nettoyer le fichier PDF temporaire
+            if (file_exists($pdf_data['path'])) {
+                unlink($pdf_data['path']);
+            }
+            
+            // Pause entre les envois
+            sleep(1);
+        }
+        
+        // Mettre à jour la commande
+        $order->add_order_note(sprintf(
+            'Campagne terminée : %d lettres envoyées, %d erreurs',
+            $success_count,
+            $error_count
+        ));
+        
+        $order->update_meta_data('_sci_campaign_status', 'completed');
+        $order->update_meta_data('_sci_campaign_success_count', $success_count);
+        $order->update_meta_data('_sci_campaign_error_count', $error_count);
+        $order->save();
+        
+        lettre_laposte_log("=== CAMPAGNE TERMINÉE ===");
+        lettre_laposte_log("Succès: $success_count, Erreurs: $error_count");
     }
     
     /**
@@ -652,175 +853,6 @@ class SCI_WooCommerce_Integration {
 
 // Initialiser l'intégration WooCommerce
 $sci_woocommerce = new SCI_WooCommerce_Integration();
-
-// Action programmée pour traiter les campagnes payées
-add_action('sci_process_paid_campaign', 'sci_process_paid_campaign_background', 10, 2);
-
-function sci_process_paid_campaign_background($order_id, $campaign_id) {
-    lettre_laposte_log("=== DÉBUT TRAITEMENT ARRIÈRE-PLAN ===");
-    lettre_laposte_log("Commande #$order_id - Campagne #$campaign_id");
-    
-    $order = wc_get_order($order_id);
-    if (!$order) {
-        lettre_laposte_log("❌ Commande introuvable");
-        return;
-    }
-    
-    $campaign_data = json_decode($order->get_meta('_sci_campaign_data'), true);
-    if (!$campaign_data) {
-        lettre_laposte_log("❌ Données de campagne introuvables");
-        return;
-    }
-    
-    lettre_laposte_log("Traitement de " . count($campaign_data['entries']) . " lettres");
-    
-    // Générer les PDFs
-    if (!class_exists('TCPDF')) {
-        require_once plugin_dir_path(__FILE__) . '../lib/tcpdf/tcpdf.php';
-    }
-    
-    $upload_dir = wp_upload_dir();
-    $pdf_dir = $upload_dir['basedir'] . '/campagnes/';
-    
-    // Créer le dossier s'il n'existe pas
-    if (!file_exists($pdf_dir)) {
-        wp_mkdir_p($pdf_dir);
-    }
-    
-    $pdf_files = array();
-    
-    foreach ($campaign_data['entries'] as $index => $entry) {
-        try {
-            lettre_laposte_log("Génération PDF " . ($index + 1) . " pour: " . ($entry['denomination'] ?? 'N/A'));
-            
-            $nom = $entry['dirigeant'] ?? 'Dirigeant';
-            $texte = str_replace('[NOM]', $nom, $campaign_data['content']);
-            
-            $pdf = new TCPDF();
-            $pdf->SetCreator('SCI Plugin');
-            $pdf->SetAuthor('SCI Plugin');
-            $pdf->SetTitle('Lettre pour ' . ($entry['denomination'] ?? 'SCI'));
-            
-            $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
-            $pdf->SetMargins(20, 20, 20);
-            $pdf->SetAutoPageBreak(TRUE, 25);
-            
-            $pdf->AddPage();
-            $pdf->SetFont('helvetica', '', 12);
-            $pdf->writeHTML(nl2br(htmlspecialchars($texte)), true, false, true, false, '');
-            
-            $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time() . '-' . $index) . '.pdf';
-            $filepath = $pdf_dir . $filename;
-            
-            $pdf->Output($filepath, 'F');
-            
-            if (file_exists($filepath)) {
-                $pdf_files[] = array(
-                    'path' => $filepath,
-                    'entry' => $entry
-                );
-                
-                lettre_laposte_log("✅ PDF généré: $filename");
-            } else {
-                lettre_laposte_log("❌ Échec génération PDF pour: " . ($entry['denomination'] ?? 'N/A'));
-            }
-            
-        } catch (Exception $e) {
-            lettre_laposte_log("❌ Erreur génération PDF: " . $e->getMessage());
-        }
-    }
-    
-    lettre_laposte_log("PDFs générés: " . count($pdf_files) . "/" . count($campaign_data['entries']));
-    
-    // Envoyer les lettres une par une
-    $campaign_manager = sci_campaign_manager();
-    $config_manager = sci_config_manager();
-    
-    $success_count = 0;
-    $error_count = 0;
-    
-    foreach ($pdf_files as $index => $pdf_data) {
-        $entry = $pdf_data['entry'];
-        
-        lettre_laposte_log("Envoi lettre " . ($index + 1) . "/" . count($pdf_files) . " pour: " . ($entry['denomination'] ?? 'N/A'));
-        
-        // Lire le PDF et l'encoder en base64
-        $pdf_content = file_get_contents($pdf_data['path']);
-        $pdf_base64 = base64_encode($pdf_content);
-        
-        // Récupérer les données expéditeur
-        $expedition_data = $campaign_manager->get_user_expedition_data($order->get_customer_id());
-        
-        // Préparer le payload
-        $laposte_params = $config_manager->get_laposte_payload_params();
-        $payload = array_merge($laposte_params, [
-            "adresse_expedition" => $expedition_data,
-            "adresse_destination" => [
-                "civilite" => "",
-                "prenom" => "",
-                "nom" => $entry['dirigeant'] ?? '',
-                "nom_societe" => $entry['denomination'] ?? '',
-                "adresse_ligne1" => $entry['adresse'] ?? '',
-                "adresse_ligne2" => "",
-                "code_postal" => $entry['code_postal'] ?? '',
-                "ville" => $entry['ville'] ?? '',
-                "pays" => "FRANCE",
-            ],
-            "fichier" => [
-                "format" => "pdf",
-                "contenu_base64" => $pdf_base64,
-            ],
-        ]);
-        
-        // Envoyer via l'API La Poste
-        $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $config_manager->get_laposte_token());
-        
-        if ($response['success']) {
-            $campaign_manager->update_letter_status(
-                $campaign_id,
-                $entry['siren'],
-                'sent',
-                $response['uid'] ?? null
-            );
-            $success_count++;
-            lettre_laposte_log("✅ Lettre envoyée - UID: " . ($response['uid'] ?? 'N/A'));
-        } else {
-            $error_msg = isset($response['message']) ? json_encode($response['message']) : ($response['error'] ?? 'Erreur inconnue');
-            $campaign_manager->update_letter_status(
-                $campaign_id,
-                $entry['siren'],
-                'failed',
-                null,
-                $error_msg
-            );
-            $error_count++;
-            lettre_laposte_log("❌ Erreur envoi: $error_msg");
-        }
-        
-        // Nettoyer le fichier PDF temporaire
-        if (file_exists($pdf_data['path'])) {
-            unlink($pdf_data['path']);
-        }
-        
-        // Pause entre les envois
-        sleep(2);
-    }
-    
-    // Mettre à jour la commande
-    $order->add_order_note(sprintf(
-        'Campagne terminée : %d lettres envoyées, %d erreurs',
-        $success_count,
-        $error_count
-    ));
-    
-    $order->update_meta_data('_sci_campaign_status', 'completed');
-    $order->update_meta_data('_sci_campaign_success_count', $success_count);
-    $order->update_meta_data('_sci_campaign_error_count', $error_count);
-    $order->save();
-    
-    lettre_laposte_log("=== CAMPAGNE TERMINÉE ===");
-    lettre_laposte_log("Succès: $success_count, Erreurs: $error_count");
-}
 
 /**
  * Fonction helper pour accéder à l'intégration WooCommerce
