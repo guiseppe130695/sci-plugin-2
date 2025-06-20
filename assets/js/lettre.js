@@ -15,6 +15,25 @@ document.addEventListener('DOMContentLoaded', function() {
     
     let selectedEntries = [];
 
+    // Contenu par défaut pour le courriel
+    const defaultEmailContent = `Madame, Monsieur [NOM],
+
+Nous espérons que ce courrier vous trouve en bonne santé.
+
+Nous nous permettons de vous contacter concernant votre SCI et souhaitons vous faire part de notre intérêt pour d'éventuelles opportunités de collaboration ou d'acquisition.
+
+Notre société, spécialisée dans l'investissement immobilier, recherche activement des biens et des structures juridiques adaptées à nos projets de développement.
+
+Nous serions ravis de pouvoir échanger avec vous sur les possibilités qui pourraient s'offrir à nous mutuellement.
+
+Si cette démarche vous intéresse, nous vous invitons à nous contacter afin de convenir d'un rendez-vous à votre convenance.
+
+Dans l'attente de votre retour, nous vous prions d'agréer, Madame, Monsieur [NOM], l'expression de nos salutations distinguées.
+
+Cordialement,
+
+[Vos coordonnées]`;
+
     // Mise à jour du compteur et activation du bouton
     function updateSelectedCount() {
         const checkedBoxes = document.querySelectorAll('.send-letter-checkbox:checked');
@@ -107,24 +126,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function resetStep2Content() {
         step2.innerHTML = `
-            <h2>✍️ Contenu de la campagne</h2>
-            <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre lettre</p>
+            <h2>✍️ Contenu du courriel</h2>
+            <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre courriel</p>
             
             <label for="campaign-title"><strong>Titre de la campagne :</strong></label><br>
-            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'achat SCI"><br>
+            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'acquisition SCI" value="Contact SCI - Opportunité d'acquisition"><br>
 
-            <label for="campaign-content"><strong>Contenu de la lettre :</strong></label><br>
-            <textarea id="campaign-content" style="width:100%; height:150px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
-
-Exemple:
-Madame, Monsieur [NOM],
-
-Nous sommes intéressés par l'acquisition de votre SCI..."></textarea>
+            <label for="campaign-content"><strong>Contenu du courriel :</strong></label><br>
+            <textarea id="campaign-content" style="width:100%; height:200px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Rédigez votre message...">${defaultEmailContent}</textarea>
 
             <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
-                <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre lettre :</h4>
+                <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre courriel :</h4>
                 <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
-                    <li>Utilisez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
+                    <li>Ajoutez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> à votre message pour qu'il soit remplacé par le nom du destinataire lors de l'envoi</li>
                     <li>Soyez professionnel et courtois dans votre approche</li>
                     <li>Précisez clairement l'objet de votre demande</li>
                     <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>

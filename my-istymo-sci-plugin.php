@@ -216,7 +216,7 @@ function sci_afficher_panel() {
       <ul id="selected-sci-list" style="max-height:350px; overflow-y:auto; border:1px solid #ddd; padding:15px; margin-bottom:25px; border-radius:6px;"></ul>
       <div style="text-align: center;">
         <button id="to-step-2" class="button button-primary button-large">
-          ✍️ Rédiger le contenu →
+          ✍️ Rédiger le courriel →
         </button>
         <button id="close-popup-1" class="button" style="margin-left:15px;">Fermer</button>
       </div>

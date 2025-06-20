@@ -270,10 +270,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span>Nombre de lettres :</span>
                             <span>${sciCount}</span>
                         </div>
-                        <div class="pricing-row">
-                            <span>Prix unitaire :</span>
-                            <span>${unitPrice}€</span>
-                        </div>
                         <div class="pricing-row total-row">
                             <span><strong>Total TTC :</strong></span>
                             <span><strong>${totalPrice}€</strong></span>
@@ -285,9 +281,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <h3>📦 Services inclus</h3>
                     <div class="services-list">
                         <div class="service-item">✅ Génération automatique des PDFs personnalisés</div>
-                        <div class="service-item">✅ Envoi en lettre recommandée avec accusé de réception (LRAR)</div>
+                        <div class="service-item">✅ Envoi en lettre recommandée</div>
                         <div class="service-item">✅ Suivi de la distribution en temps réel</div>
-                        <div class="service-item">✅ Accusé de réception dématérialisé</div>
                         <div class="service-item">✅ Historique complet dans vos campagnes</div>
                         <div class="service-item">✅ Support technique inclus</div>
                     </div>
@@ -644,24 +639,19 @@ document.addEventListener('DOMContentLoaded', function() {
         const step2 = document.getElementById('step-2');
         
         const contentHtml = `
-            <h2>✍️ Contenu de la campagne</h2>
-            <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre lettre</p>
+            <h2>✍️ Contenu du courriel</h2>
+            <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre courriel</p>
             
             <label for="campaign-title"><strong>Titre de la campagne :</strong></label><br>
-            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'achat SCI" value="${escapeHtml(title)}"><br>
+            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'acquisition SCI" value="${escapeHtml(title)}"><br>
 
-            <label for="campaign-content"><strong>Contenu de la lettre :</strong></label><br>
-            <textarea id="campaign-content" style="width:100%; height:150px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Utilisez [NOM] pour personnaliser avec le nom du dirigeant
-
-Exemple:
-Madame, Monsieur [NOM],
-
-Nous sommes intéressés par l'acquisition de votre SCI...">${escapeHtml(content)}</textarea>
+            <label for="campaign-content"><strong>Contenu du courriel :</strong></label><br>
+            <textarea id="campaign-content" style="width:100%; height:200px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Rédigez votre message...">${escapeHtml(content)}</textarea>
 
             <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
-                <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre lettre :</h4>
+                <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre courriel :</h4>
                 <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
-                    <li>Utilisez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> pour personnaliser avec le nom du dirigeant</li>
+                    <li>Ajoutez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> à votre message pour qu'il soit remplacé par le nom du destinataire lors de l'envoi</li>
                     <li>Soyez professionnel et courtois dans votre approche</li>
                     <li>Précisez clairement l'objet de votre demande</li>
                     <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
