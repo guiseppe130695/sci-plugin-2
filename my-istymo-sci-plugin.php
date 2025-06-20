@@ -2,7 +2,7 @@
 /*
 Plugin Name: SCI
 Description: Plugin personnalisé SCI avec un panneau admin et un sélecteur de codes postaux.
-Version: 1.5
+Version: 1.6
 Author: Brio Guiseppe
 */
 
@@ -911,14 +911,21 @@ function sci_generer_pdfs() {
         return;
     }
 
+    lettre_laposte_log("=== DÉBUT GÉNÉRATION PDFs ===");
+    lettre_laposte_log("Titre campagne: " . ($data['title'] ?? 'N/A'));
+    lettre_laposte_log("Nombre d'entrées: " . count($data['entries']));
+
     // Créer la campagne en base de données
     $campaign_manager = sci_campaign_manager();
     $campaign_id = $campaign_manager->create_campaign($data['title'], $data['content'], $data['entries']);
     
     if (is_wp_error($campaign_id)) {
+        lettre_laposte_log("❌ Erreur création campagne: " . $campaign_id->get_error_message());
         wp_send_json_error("Erreur lors de la création de la campagne : " . $campaign_id->get_error_message());
         return;
     }
+
+    lettre_laposte_log("✅ Campagne créée avec ID: $campaign_id");
 
     // Inclure TCPDF
     if (!class_exists('TCPDF')) {
@@ -932,12 +939,15 @@ function sci_generer_pdfs() {
     // Créer le dossier s'il n'existe pas
     if (!file_exists($pdf_dir)) {
         wp_mkdir_p($pdf_dir);
+        lettre_laposte_log("📁 Dossier créé: $pdf_dir");
     }
 
     $pdf_links = [];
 
-    foreach ($data['entries'] as $entry) {
+    foreach ($data['entries'] as $index => $entry) {
         try {
+            lettre_laposte_log("📄 Génération PDF " . ($index + 1) . "/" . count($data['entries']) . " pour: " . ($entry['denomination'] ?? 'N/A'));
+            
             $nom = $entry['dirigeant'] ?? 'Dirigeant';
             $texte = str_replace('[NOM]', $nom, $data['content']);
 
@@ -964,7 +974,7 @@ function sci_generer_pdfs() {
             $pdf->writeHTML(nl2br(htmlspecialchars($texte)), true, false, true, false, '');
 
             // Générer le nom de fichier sécurisé
-            $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time()) . '.pdf';
+            $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time() . '-' . $index) . '.pdf';
             $filepath = $pdf_dir . $filename;
             $fileurl = $pdf_url_base . $filename;
 
@@ -979,22 +989,23 @@ function sci_generer_pdfs() {
                     'path' => $filepath
                 ];
                 
-                lettre_laposte_log("PDF généré avec succès : $filename pour {$entry['denomination']}");
+                lettre_laposte_log("✅ PDF généré avec succès : $filename pour {$entry['denomination']}");
             } else {
-                lettre_laposte_log("Erreur : PDF non créé pour {$entry['denomination']}");
+                lettre_laposte_log("❌ Erreur : PDF non créé pour {$entry['denomination']}");
             }
 
         } catch (Exception $e) {
-            lettre_laposte_log("Erreur lors de la génération PDF pour {$entry['denomination']}: " . $e->getMessage());
+            lettre_laposte_log("❌ Erreur lors de la génération PDF pour {$entry['denomination']}: " . $e->getMessage());
         }
     }
 
     if (empty($pdf_links)) {
+        lettre_laposte_log("❌ Aucun PDF généré");
         wp_send_json_error('Aucun PDF n\'a pu être généré');
         return;
     }
 
-    lettre_laposte_log("Génération terminée : " . count($pdf_links) . " PDFs créés sur " . count($data['entries']) . " demandés");
+    lettre_laposte_log("✅ Génération terminée : " . count($pdf_links) . " PDFs créés sur " . count($data['entries']) . " demandés");
 
     wp_send_json_success([
         'files' => $pdf_links,

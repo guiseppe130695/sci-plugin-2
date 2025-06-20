@@ -394,13 +394,21 @@ class SCI_WooCommerce_Integration {
             return;
         }
         
+        lettre_laposte_log("=== CRÉATION COMMANDE WOOCOMMERCE ===");
+        lettre_laposte_log("Utilisateur: " . get_current_user_id());
+        lettre_laposte_log("Nombre SCI: $sci_count");
+        lettre_laposte_log("Titre campagne: " . ($campaign_data['title'] ?? 'N/A'));
+        
         // Créer la commande WooCommerce
         $order_id = $this->create_woocommerce_order($campaign_data, $sci_count);
         
         if (is_wp_error($order_id)) {
+            lettre_laposte_log("❌ Erreur création commande: " . $order_id->get_error_message());
             wp_send_json_error('Erreur lors de la création de la commande : ' . $order_id->get_error_message());
             return;
         }
+        
+        lettre_laposte_log("✅ Commande créée avec ID: $order_id");
         
         // Retourner l'URL de paiement avec paramètres optimisés
         $order = wc_get_order($order_id);
@@ -444,6 +452,8 @@ class SCI_WooCommerce_Integration {
         
         $status = $order->get_status();
         $is_paid = in_array($status, ['processing', 'completed', 'on-hold']);
+        
+        lettre_laposte_log("Vérification statut commande #$order_id: $status (payé: " . ($is_paid ? 'oui' : 'non') . ")");
         
         wp_send_json_success(array(
             'status' => $is_paid ? 'paid' : 'pending',
@@ -556,6 +566,9 @@ class SCI_WooCommerce_Integration {
             return; // Déjà traité
         }
         
+        lettre_laposte_log("=== TRAITEMENT CAMPAGNE PAYÉE ===");
+        lettre_laposte_log("Commande #$order_id - Statut: " . $order->get_status());
+        
         // Marquer comme en cours de traitement
         $order->update_meta_data('_sci_campaign_status', 'processing');
         $order->save();
@@ -564,8 +577,11 @@ class SCI_WooCommerce_Integration {
         $campaign_data = json_decode($campaign_data, true);
         if (!$campaign_data) {
             $order->add_order_note('Erreur : données de campagne invalides');
+            lettre_laposte_log("❌ Données de campagne invalides");
             return;
         }
+        
+        lettre_laposte_log("Données campagne décodées: " . json_encode($campaign_data, JSON_PRETTY_PRINT));
         
         // Créer la campagne en base de données
         $campaign_manager = sci_campaign_manager();
@@ -576,17 +592,21 @@ class SCI_WooCommerce_Integration {
         );
         
         if (is_wp_error($campaign_id)) {
-            $order->add_order_note('Erreur lors de la création de la campagne : ' . $campaign_id->get_error_message());
+            $error_msg = 'Erreur lors de la création de la campagne : ' . $campaign_id->get_error_message();
+            $order->add_order_note($error_msg);
             $order->update_meta_data('_sci_campaign_status', 'error');
             $order->save();
+            lettre_laposte_log("❌ " . $error_msg);
             return;
         }
+        
+        lettre_laposte_log("✅ Campagne créée avec ID: $campaign_id");
         
         // Sauvegarder l'ID de campagne
         $order->update_meta_data('_sci_campaign_id', $campaign_id);
         
         // Programmer l'envoi des lettres (en arrière-plan)
-        wp_schedule_single_event(time() + 60, 'sci_process_paid_campaign', array($order_id, $campaign_id));
+        wp_schedule_single_event(time() + 30, 'sci_process_paid_campaign', array($order_id, $campaign_id));
         
         $order->add_order_note(sprintf(
             'Paiement confirmé. Campagne #%d créée. Envoi programmé.',
@@ -595,6 +615,8 @@ class SCI_WooCommerce_Integration {
         
         $order->update_meta_data('_sci_campaign_status', 'scheduled');
         $order->save();
+        
+        lettre_laposte_log("✅ Envoi programmé pour dans 30 secondes");
     }
     
     /**
@@ -635,15 +657,22 @@ $sci_woocommerce = new SCI_WooCommerce_Integration();
 add_action('sci_process_paid_campaign', 'sci_process_paid_campaign_background', 10, 2);
 
 function sci_process_paid_campaign_background($order_id, $campaign_id) {
+    lettre_laposte_log("=== DÉBUT TRAITEMENT ARRIÈRE-PLAN ===");
+    lettre_laposte_log("Commande #$order_id - Campagne #$campaign_id");
+    
     $order = wc_get_order($order_id);
     if (!$order) {
+        lettre_laposte_log("❌ Commande introuvable");
         return;
     }
     
     $campaign_data = json_decode($order->get_meta('_sci_campaign_data'), true);
     if (!$campaign_data) {
+        lettre_laposte_log("❌ Données de campagne introuvables");
         return;
     }
+    
+    lettre_laposte_log("Traitement de " . count($campaign_data['entries']) . " lettres");
     
     // Générer les PDFs
     if (!class_exists('TCPDF')) {
@@ -660,8 +689,10 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
     
     $pdf_files = array();
     
-    foreach ($campaign_data['entries'] as $entry) {
+    foreach ($campaign_data['entries'] as $index => $entry) {
         try {
+            lettre_laposte_log("Génération PDF " . ($index + 1) . " pour: " . ($entry['denomination'] ?? 'N/A'));
+            
             $nom = $entry['dirigeant'] ?? 'Dirigeant';
             $texte = str_replace('[NOM]', $nom, $campaign_data['content']);
             
@@ -678,7 +709,7 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
             $pdf->SetFont('helvetica', '', 12);
             $pdf->writeHTML(nl2br(htmlspecialchars($texte)), true, false, true, false, '');
             
-            $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time()) . '.pdf';
+            $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time() . '-' . $index) . '.pdf';
             $filepath = $pdf_dir . $filename;
             
             $pdf->Output($filepath, 'F');
@@ -689,13 +720,17 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
                     'entry' => $entry
                 );
                 
-                lettre_laposte_log("PDF généré en arrière-plan : $filename pour {$entry['denomination']}");
+                lettre_laposte_log("✅ PDF généré: $filename");
+            } else {
+                lettre_laposte_log("❌ Échec génération PDF pour: " . ($entry['denomination'] ?? 'N/A'));
             }
             
         } catch (Exception $e) {
-            lettre_laposte_log("Erreur génération PDF arrière-plan pour {$entry['denomination']}: " . $e->getMessage());
+            lettre_laposte_log("❌ Erreur génération PDF: " . $e->getMessage());
         }
     }
+    
+    lettre_laposte_log("PDFs générés: " . count($pdf_files) . "/" . count($campaign_data['entries']));
     
     // Envoyer les lettres une par une
     $campaign_manager = sci_campaign_manager();
@@ -704,8 +739,10 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
     $success_count = 0;
     $error_count = 0;
     
-    foreach ($pdf_files as $pdf_data) {
+    foreach ($pdf_files as $index => $pdf_data) {
         $entry = $pdf_data['entry'];
+        
+        lettre_laposte_log("Envoi lettre " . ($index + 1) . "/" . count($pdf_files) . " pour: " . ($entry['denomination'] ?? 'N/A'));
         
         // Lire le PDF et l'encoder en base64
         $pdf_content = file_get_contents($pdf_data['path']);
@@ -746,7 +783,7 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
                 $response['uid'] ?? null
             );
             $success_count++;
-            lettre_laposte_log("✅ Lettre envoyée en arrière-plan pour {$entry['denomination']} - UID: " . ($response['uid'] ?? 'N/A'));
+            lettre_laposte_log("✅ Lettre envoyée - UID: " . ($response['uid'] ?? 'N/A'));
         } else {
             $error_msg = isset($response['message']) ? json_encode($response['message']) : ($response['error'] ?? 'Erreur inconnue');
             $campaign_manager->update_letter_status(
@@ -757,7 +794,7 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
                 $error_msg
             );
             $error_count++;
-            lettre_laposte_log("❌ Erreur envoi arrière-plan pour {$entry['denomination']}: $error_msg");
+            lettre_laposte_log("❌ Erreur envoi: $error_msg");
         }
         
         // Nettoyer le fichier PDF temporaire
@@ -782,7 +819,6 @@ function sci_process_paid_campaign_background($order_id, $campaign_id) {
     $order->save();
     
     lettre_laposte_log("=== CAMPAGNE TERMINÉE ===");
-    lettre_laposte_log("Commande #$order_id - Campagne #$campaign_id");
     lettre_laposte_log("Succès: $success_count, Erreurs: $error_count");
 }
 
