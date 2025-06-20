@@ -680,14 +680,29 @@ class SCI_WooCommerce_Integration {
             wp_mkdir_p($pdf_dir);
         }
         
-        $pdf_files = array();
+        $success_count = 0;
+        $error_count = 0;
+        
+        // Récupérer les managers nécessaires
+        $campaign_manager = sci_campaign_manager();
+        $config_manager = sci_config_manager();
+        
+        // Récupérer les données expéditeur une seule fois
+        $expedition_data = $campaign_manager->get_user_expedition_data($order->get_customer_id());
+        lettre_laposte_log("Données expéditeur: " . json_encode($expedition_data, JSON_PRETTY_PRINT));
         
         foreach ($campaign_data['entries'] as $index => $entry) {
             try {
-                lettre_laposte_log("Génération PDF " . ($index + 1) . " pour: " . ($entry['denomination'] ?? 'N/A'));
+                lettre_laposte_log("=== TRAITEMENT LETTRE " . ($index + 1) . "/" . count($campaign_data['entries']) . " ===");
+                lettre_laposte_log("SCI: " . ($entry['denomination'] ?? 'N/A'));
                 
+                // ✅ ÉTAPE 1: GÉNÉRATION DU PDF
                 $nom = $entry['dirigeant'] ?? 'Dirigeant';
                 $texte = str_replace('[NOM]', $nom, $campaign_data['content']);
+                
+                lettre_laposte_log("Génération PDF pour: " . $entry['denomination']);
+                lettre_laposte_log("Dirigeant: $nom");
+                lettre_laposte_log("Contenu (extrait): " . substr($texte, 0, 100) . "...");
                 
                 $pdf = new TCPDF();
                 $pdf->SetCreator('SCI Plugin');
@@ -702,109 +717,98 @@ class SCI_WooCommerce_Integration {
                 $pdf->SetFont('helvetica', '', 12);
                 $pdf->writeHTML(nl2br(htmlspecialchars($texte)), true, false, true, false, '');
                 
+                // ✅ ÉTAPE 2: SAUVEGARDE TEMPORAIRE DU PDF
                 $filename = sanitize_file_name($entry['denomination'] . '-' . $nom . '-' . time() . '-' . $index) . '.pdf';
-                $filepath = $pdf_dir . $filename;
+                $pdf_tmp_path = $pdf_dir . $filename;
                 
-                $pdf->Output($filepath, 'F');
+                $pdf->Output($pdf_tmp_path, 'F');
                 
-                if (file_exists($filepath)) {
-                    $pdf_files[] = array(
-                        'path' => $filepath,
-                        'entry' => $entry
-                    );
-                    
-                    lettre_laposte_log("✅ PDF généré: $filename");
-                } else {
-                    lettre_laposte_log("❌ Échec génération PDF pour: " . ($entry['denomination'] ?? 'N/A'));
+                if (!file_exists($pdf_tmp_path)) {
+                    lettre_laposte_log("❌ Échec génération PDF pour: " . $entry['denomination']);
+                    $error_count++;
+                    continue;
                 }
                 
+                lettre_laposte_log("✅ PDF généré: $filename (" . filesize($pdf_tmp_path) . " bytes)");
+                
+                // ✅ ÉTAPE 3: ENCODAGE BASE64 (COMME DANS VOTRE ANCIEN SYSTÈME)
+                $pdf_base64 = base64_encode(file_get_contents($pdf_tmp_path));
+                lettre_laposte_log("✅ PDF encodé en base64: " . strlen($pdf_base64) . " caractères");
+                
+                // ✅ ÉTAPE 4: PRÉPARATION DU PAYLOAD
+                $laposte_params = $config_manager->get_laposte_payload_params();
+                $payload = array_merge($laposte_params, [
+                    "adresse_expedition" => $expedition_data,
+                    "adresse_destination" => [
+                        "civilite" => "",
+                        "prenom" => "",
+                        "nom" => $entry['dirigeant'] ?? '',
+                        "nom_societe" => $entry['denomination'] ?? '',
+                        "adresse_ligne1" => $entry['adresse'] ?? '',
+                        "adresse_ligne2" => "",
+                        "code_postal" => $entry['code_postal'] ?? '',
+                        "ville" => $entry['ville'] ?? '',
+                        "pays" => "FRANCE",
+                    ],
+                    "fichier" => [
+                        "format" => "pdf",
+                        "contenu_base64" => $pdf_base64, // ✅ VRAIE VALEUR BASE64
+                    ],
+                ]);
+                
+                // Logger le payload (sans le PDF pour éviter les logs trop volumineux)
+                $payload_for_log = $payload;
+                $payload_for_log['fichier']['contenu_base64'] = '[PDF_BASE64_' . strlen($pdf_base64) . '_CHARS]';
+                lettre_laposte_log("Payload pour {$entry['denomination']}: " . json_encode($payload_for_log, JSON_PRETTY_PRINT));
+                
+                // ✅ ÉTAPE 5: ENVOI VIA L'API LA POSTE
+                lettre_laposte_log("🚀 Envoi vers l'API La Poste...");
+                $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $config_manager->get_laposte_token());
+                
+                // ✅ ÉTAPE 6: TRAITEMENT DE LA RÉPONSE
+                if ($response['success']) {
+                    $campaign_manager->update_letter_status(
+                        $campaign_id,
+                        $entry['siren'],
+                        'sent',
+                        $response['uid'] ?? null
+                    );
+                    $success_count++;
+                    lettre_laposte_log("✅ Lettre envoyée avec succès - UID: " . ($response['uid'] ?? 'N/A'));
+                } else {
+                    $error_msg = isset($response['message']) ? json_encode($response['message']) : ($response['error'] ?? 'Erreur inconnue');
+                    $campaign_manager->update_letter_status(
+                        $campaign_id,
+                        $entry['siren'],
+                        'failed',
+                        null,
+                        $error_msg
+                    );
+                    $error_count++;
+                    lettre_laposte_log("❌ Erreur envoi: $error_msg");
+                }
+                
+                // ✅ ÉTAPE 7: NETTOYAGE DU FICHIER TEMPORAIRE
+                if (file_exists($pdf_tmp_path)) {
+                    unlink($pdf_tmp_path);
+                    lettre_laposte_log("🗑️ Fichier temporaire supprimé: $filename");
+                }
+                
+                // Pause entre les envois pour éviter de surcharger l'API
+                sleep(1);
+                
             } catch (Exception $e) {
-                lettre_laposte_log("❌ Erreur génération PDF: " . $e->getMessage());
-            }
-        }
-        
-        lettre_laposte_log("PDFs générés: " . count($pdf_files) . "/" . count($campaign_data['entries']));
-        
-        // Envoyer les lettres une par une
-        $campaign_manager = sci_campaign_manager();
-        $config_manager = sci_config_manager();
-        
-        $success_count = 0;
-        $error_count = 0;
-        
-        foreach ($pdf_files as $index => $pdf_data) {
-            $entry = $pdf_data['entry'];
-            
-            lettre_laposte_log("Envoi lettre " . ($index + 1) . "/" . count($pdf_files) . " pour: " . ($entry['denomination'] ?? 'N/A'));
-            
-            // Lire le PDF et l'encoder en base64
-            $pdf_content = file_get_contents($pdf_data['path']);
-            $pdf_base64 = base64_encode($pdf_content);
-            
-            // Récupérer les données expéditeur
-            $expedition_data = $campaign_manager->get_user_expedition_data($order->get_customer_id());
-            
-            // Préparer le payload
-            $laposte_params = $config_manager->get_laposte_payload_params();
-            $payload = array_merge($laposte_params, [
-                "adresse_expedition" => $expedition_data,
-                "adresse_destination" => [
-                    "civilite" => "",
-                    "prenom" => "",
-                    "nom" => $entry['dirigeant'] ?? '',
-                    "nom_societe" => $entry['denomination'] ?? '',
-                    "adresse_ligne1" => $entry['adresse'] ?? '',
-                    "adresse_ligne2" => "",
-                    "code_postal" => $entry['code_postal'] ?? '',
-                    "ville" => $entry['ville'] ?? '',
-                    "pays" => "FRANCE",
-                ],
-                "fichier" => [
-                    "format" => "pdf",
-                    "contenu_base64" => $pdf_base64,
-                ],
-            ]);
-            
-            // Logger le payload (sans le PDF)
-            $payload_for_log = $payload;
-            $payload_for_log['fichier']['contenu_base64'] = '[PDF_BASE64_' . strlen($pdf_base64) . '_CHARS]';
-            lettre_laposte_log("Payload pour {$entry['denomination']}: " . json_encode($payload_for_log, JSON_PRETTY_PRINT));
-            
-            // Envoyer via l'API La Poste
-            $response = envoyer_lettre_via_api_la_poste_my_istymo($payload, $config_manager->get_laposte_token());
-            
-            if ($response['success']) {
-                $campaign_manager->update_letter_status(
-                    $campaign_id,
-                    $entry['siren'],
-                    'sent',
-                    $response['uid'] ?? null
-                );
-                $success_count++;
-                lettre_laposte_log("✅ Lettre envoyée - UID: " . ($response['uid'] ?? 'N/A'));
-            } else {
-                $error_msg = isset($response['message']) ? json_encode($response['message']) : ($response['error'] ?? 'Erreur inconnue');
-                $campaign_manager->update_letter_status(
-                    $campaign_id,
-                    $entry['siren'],
-                    'failed',
-                    null,
-                    $error_msg
-                );
+                lettre_laposte_log("❌ Erreur lors du traitement de {$entry['denomination']}: " . $e->getMessage());
                 $error_count++;
-                lettre_laposte_log("❌ Erreur envoi: $error_msg");
+                
+                // Nettoyer le fichier en cas d'erreur
+                if (isset($pdf_tmp_path) && file_exists($pdf_tmp_path)) {
+                    unlink($pdf_tmp_path);
+                }
             }
-            
-            // Nettoyer le fichier PDF temporaire
-            if (file_exists($pdf_data['path'])) {
-                unlink($pdf_data['path']);
-            }
-            
-            // Pause entre les envois
-            sleep(1);
         }
         
-        // Mettre à jour la commande
+        // ✅ ÉTAPE 8: FINALISATION
         $order->add_order_note(sprintf(
             'Campagne terminée : %d lettres envoyées, %d erreurs',
             $success_count,
@@ -818,6 +822,7 @@ class SCI_WooCommerce_Integration {
         
         lettre_laposte_log("=== CAMPAGNE TERMINÉE ===");
         lettre_laposte_log("Succès: $success_count, Erreurs: $error_count");
+        lettre_laposte_log("Statut final: completed");
     }
     
     /**
