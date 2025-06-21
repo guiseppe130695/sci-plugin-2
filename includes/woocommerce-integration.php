@@ -484,9 +484,9 @@ class SCI_WooCommerce_Integration {
         
         lettre_laposte_log("✅ Commande créée avec ID: $order_id");
         
-        // Retourner l'URL de paiement standard (sans embedded pour redirection directe)
+        // Retourner l'URL de paiement avec paramètres optimisés pour iframe
         $order = wc_get_order($order_id);
-        $checkout_url = $order->get_checkout_payment_url();
+        $checkout_url = $order->get_checkout_payment_url() . '&embedded=1&hide_admin_bar=1';
         
         wp_send_json_success(array(
             'order_id' => $order_id,
