@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) exit;
 class SCI_WooCommerce_Integration {
     
     private $product_id;
+    private $processing_orders = []; // ✅ NOUVEAU : Éviter les doublons
     
     public function __construct() {
         // Hooks d'initialisation
@@ -46,16 +47,52 @@ class SCI_WooCommerce_Integration {
     }
     
     /**
+     * ✅ NOUVEAU : Vérification anti-doublon
+     */
+    private function is_order_being_processed($order_id) {
+        return in_array($order_id, $this->processing_orders);
+    }
+    
+    /**
+     * ✅ NOUVEAU : Marquer une commande comme en cours de traitement
+     */
+    private function mark_order_processing($order_id) {
+        if (!in_array($order_id, $this->processing_orders)) {
+            $this->processing_orders[] = $order_id;
+        }
+    }
+    
+    /**
+     * ✅ NOUVEAU : Libérer une commande du traitement
+     */
+    private function unmark_order_processing($order_id) {
+        $this->processing_orders = array_diff($this->processing_orders, [$order_id]);
+    }
+    
+    /**
      * Nouveau handler pour tous les changements de statut
      */
     public function handle_status_change($order_id, $old_status, $new_status, $order) {
         lettre_laposte_log("=== CHANGEMENT STATUT COMMANDE ===");
         lettre_laposte_log("Commande #$order_id: $old_status → $new_status");
         
+        // ✅ VÉRIFICATION ANTI-DOUBLON
+        if ($this->is_order_being_processed($order_id)) {
+            lettre_laposte_log("⚠️ Commande #$order_id déjà en cours de traitement, ignoré");
+            return;
+        }
+        
         // Vérifier si c'est une commande SCI
         $campaign_data = $order->get_meta('_sci_campaign_data');
         if (!$campaign_data) {
             lettre_laposte_log("❌ Pas une commande SCI");
+            return;
+        }
+        
+        // Vérifier si déjà traité
+        $campaign_status = $order->get_meta('_sci_campaign_status');
+        if (in_array($campaign_status, ['processed', 'processing', 'scheduled', 'completed', 'processing_letters'])) {
+            lettre_laposte_log("ℹ️ Commande #$order_id déjà traitée (statut: $campaign_status)");
             return;
         }
         
@@ -121,6 +158,14 @@ class SCI_WooCommerce_Integration {
                     max-width: none !important;
                     margin: 0 !important;
                     padding: 0 !important;
+                }
+                
+                /* ✅ MASQUER LE RÉCAPITULATIF WOOCOMMERCE */
+                .woocommerce-checkout-review-order-table,
+                .woocommerce-checkout-review-order,
+                .order_review,
+                .shop_table.woocommerce-checkout-review-order-table {
+                    display: none !important;
                 }
                 
                 /* Améliorer l'affichage du checkout */
@@ -339,7 +384,7 @@ class SCI_WooCommerce_Integration {
         $product = new WC_Product_Simple();
         $product->set_name('Contact SCI - Envoi de lettre');
         $product->set_description('Service d\'envoi de lettre recommandée vers une SCI');
-        $product->set_short_description('Envoi de lettre recommandée avec accusé de réception');
+        $product->set_short_description('Envoi de lettre recommandée');
         $product->set_regular_price('5.00'); // Prix par défaut, modifiable
         $product->set_manage_stock(false);
         $product->set_stock_status('instock');
@@ -439,9 +484,9 @@ class SCI_WooCommerce_Integration {
         
         lettre_laposte_log("✅ Commande créée avec ID: $order_id");
         
-        // Retourner l'URL de paiement avec paramètres optimisés
+        // Retourner l'URL de paiement standard (sans embedded pour redirection directe)
         $order = wc_get_order($order_id);
-        $checkout_url = $order->get_checkout_payment_url() . '&embedded=1&hide_admin_bar=1';
+        $checkout_url = $order->get_checkout_payment_url();
         
         wp_send_json_success(array(
             'order_id' => $order_id,
@@ -578,6 +623,12 @@ class SCI_WooCommerce_Integration {
      * Traite une campagne après paiement réussi
      */
     public function process_paid_campaign($order_id) {
+        // ✅ VÉRIFICATION ANTI-DOUBLON
+        if ($this->is_order_being_processed($order_id)) {
+            lettre_laposte_log("⚠️ Commande #$order_id déjà en cours de traitement, ignoré");
+            return;
+        }
+        
         $order = wc_get_order($order_id);
         if (!$order) {
             lettre_laposte_log("❌ Commande #$order_id introuvable");
@@ -593,10 +644,13 @@ class SCI_WooCommerce_Integration {
         
         // Vérifier si déjà traité
         $campaign_status = $order->get_meta('_sci_campaign_status');
-        if ($campaign_status === 'processed' || $campaign_status === 'processing' || $campaign_status === 'scheduled') {
+        if (in_array($campaign_status, ['processed', 'processing', 'scheduled', 'completed', 'processing_letters'])) {
             lettre_laposte_log("ℹ️ Commande #$order_id déjà traitée (statut: $campaign_status)");
             return; // Déjà traité
         }
+        
+        // ✅ MARQUER COMME EN COURS DE TRAITEMENT
+        $this->mark_order_processing($order_id);
         
         lettre_laposte_log("=== TRAITEMENT CAMPAGNE PAYÉE ===");
         lettre_laposte_log("Commande #$order_id - Statut: " . $order->get_status());
@@ -610,6 +664,7 @@ class SCI_WooCommerce_Integration {
         if (!$campaign_data) {
             $order->add_order_note('Erreur : données de campagne invalides');
             lettre_laposte_log("❌ Données de campagne invalides");
+            $this->unmark_order_processing($order_id); // ✅ LIBÉRER
             return;
         }
         
@@ -629,6 +684,7 @@ class SCI_WooCommerce_Integration {
             $order->update_meta_data('_sci_campaign_status', 'error');
             $order->save();
             lettre_laposte_log("❌ " . $error_msg);
+            $this->unmark_order_processing($order_id); // ✅ LIBÉRER
             return;
         }
         
@@ -650,6 +706,9 @@ class SCI_WooCommerce_Integration {
         $order->save();
         
         lettre_laposte_log("✅ Traitement immédiat démarré");
+        
+        // ✅ LIBÉRER À LA FIN
+        $this->unmark_order_processing($order_id);
     }
     
     /**
