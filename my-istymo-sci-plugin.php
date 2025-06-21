@@ -14,6 +14,7 @@ require_once plugin_dir_path(__FILE__) . 'includes/favoris-handler.php';
 require_once plugin_dir_path(__FILE__) . 'includes/config-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/campaign-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/woocommerce-integration.php';
+require_once plugin_dir_path(__FILE__) . 'includes/shortcodes.php'; // ✅ NOUVEAU
 
 
 // --- Ajout du menu SCI dans l'admin WordPress ---
@@ -105,6 +106,17 @@ function sci_afficher_panel() {
         echo $campaign_manager->get_configuration_help();
         echo '</div>';
     }
+
+    // ✅ NOUVEAU : Affichage des shortcodes disponibles
+    echo '<div class="notice notice-info">';
+    echo '<h4>📋 Shortcodes disponibles pour vos pages/articles :</h4>';
+    echo '<ul>';
+    echo '<li><code>[sci_panel]</code> - Panneau de recherche SCI complet</li>';
+    echo '<li><code>[sci_favoris]</code> - Liste des SCI favoris</li>';
+    echo '<li><code>[sci_campaigns]</code> - Liste des campagnes de lettres</li>';
+    echo '</ul>';
+    echo '<p><small>Copiez-collez ces shortcodes dans vos pages ou articles pour afficher les fonctionnalités SCI sur votre site.</small></p>';
+    echo '</div>';
 
     // Si un formulaire POST a été envoyé avec un code postal sélectionné
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['codePostal'])) {
