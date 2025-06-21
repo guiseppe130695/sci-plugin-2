@@ -119,12 +119,12 @@ class SCI_WooCommerce_Integration {
             add_action('wp_head', function() {
                 ?>
                 <style>
-                /* Masquer complètement la barre d'admin */
+                /* ✅ MASQUER COMPLÈTEMENT LA BARRE D'ADMIN */
                 #wpadminbar {
                     display: none !important;
                 }
                 
-                /* Ajuster le margin-top du body */
+                /* ✅ AJUSTER LE MARGIN-TOP DU BODY */
                 body.admin-bar {
                     margin-top: 0 !important;
                 }
@@ -133,14 +133,14 @@ class SCI_WooCommerce_Integration {
                     margin-top: 0 !important;
                 }
                 
-                /* Optimiser l'affichage pour l'iframe */
+                /* ✅ OPTIMISER L'AFFICHAGE POUR L'IFRAME */
                 body {
                     background: #f9f9f9 !important;
                     margin: 0 !important;
                     padding: 15px !important;
                 }
                 
-                /* Masquer les éléments non essentiels */
+                /* ✅ MASQUER LES ÉLÉMENTS NON ESSENTIELS */
                 .site-header,
                 .site-footer,
                 .breadcrumb,
@@ -150,7 +150,7 @@ class SCI_WooCommerce_Integration {
                     display: none !important;
                 }
                 
-                /* Optimiser le contenu principal */
+                /* ✅ OPTIMISER LE CONTENU PRINCIPAL */
                 .site-content,
                 .content-area,
                 main {
@@ -160,15 +160,80 @@ class SCI_WooCommerce_Integration {
                     padding: 0 !important;
                 }
                 
-                /* ✅ MASQUER LE RÉCAPITULATIF WOOCOMMERCE */
+                /* ✅ FORCER LA DÉSACTIVATION DU TABLEAU DE RÉCAPITULATIF WOOCOMMERCE */
                 .woocommerce-checkout-review-order-table,
                 .woocommerce-checkout-review-order,
                 .order_review,
-                .shop_table.woocommerce-checkout-review-order-table {
+                .shop_table.woocommerce-checkout-review-order-table,
+                .woocommerce-checkout-review-order-table.shop_table,
+                table.shop_table.woocommerce-checkout-review-order-table,
+                .checkout-review-order-table,
+                .wc-checkout-review-order-table,
+                #order_review .shop_table,
+                #order_review table,
+                .woocommerce-checkout .shop_table,
+                .woocommerce form .shop_table,
+                .woocommerce-page form .shop_table,
+                .checkout .shop_table,
+                .checkout-review .shop_table,
+                .order-review .shop_table,
+                .woocommerce-checkout-review-order .shop_table,
+                .woocommerce-checkout-payment .shop_table,
+                .woocommerce table.shop_table_responsive,
+                .woocommerce-checkout table.shop_table,
+                .woocommerce-checkout .woocommerce-checkout-review-order table,
+                .woocommerce-checkout .woocommerce-checkout-review-order .shop_table,
+                .woocommerce-checkout #order_review table.shop_table,
+                .woocommerce-checkout #order_review .shop_table,
+                .woocommerce-checkout .checkout-review-order table,
+                .woocommerce-checkout .order-total,
+                .woocommerce-checkout .cart-subtotal,
+                .woocommerce-checkout .order-total tr,
+                .woocommerce-checkout .cart_totals,
+                .woocommerce-checkout .cart_totals table,
+                .woocommerce-checkout .cart_totals .shop_table,
+                .woocommerce .cart_totals,
+                .woocommerce .cart_totals table,
+                .woocommerce .cart_totals .shop_table,
+                .woocommerce-checkout-review-order .cart_totals,
+                .woocommerce-checkout-review-order .order_review,
+                .woocommerce-checkout-review-order .shop_table_responsive,
+                .woocommerce-checkout-review-order table.responsive,
+                .woocommerce-checkout-review-order .woocommerce-table,
+                .woocommerce-checkout-review-order .wc-table,
+                .checkout-review-order,
+                .checkout-review-order table,
+                .checkout-review-order .shop_table,
+                .woocommerce-order-overview,
+                .woocommerce-order-details,
+                .woocommerce-order-details .shop_table,
+                .order-details,
+                .order-details table,
+                .order-details .shop_table {
+                    display: none !important;
+                    visibility: hidden !important;
+                    opacity: 0 !important;
+                    height: 0 !important;
+                    overflow: hidden !important;
+                    position: absolute !important;
+                    left: -9999px !important;
+                    top: -9999px !important;
+                }
+                
+                /* ✅ MASQUER AUSSI LES TITRES ET SECTIONS LIÉS AU RÉCAPITULATIF */
+                .woocommerce-checkout h3:contains("Votre commande"),
+                .woocommerce-checkout h3:contains("Your order"),
+                .woocommerce-checkout h3:contains("Order review"),
+                .woocommerce-checkout h3:contains("Récapitulatif"),
+                .woocommerce-checkout h3:contains("Commande"),
+                .woocommerce-checkout .checkout-review-order h3,
+                .woocommerce-checkout .order-review h3,
+                .woocommerce-checkout .woocommerce-checkout-review-order h3,
+                .woocommerce-checkout #order_review h3 {
                     display: none !important;
                 }
                 
-                /* Améliorer l'affichage du checkout */
+                /* ✅ AMÉLIORER L'AFFICHAGE DU CHECKOUT */
                 .woocommerce {
                     background: white;
                     padding: 20px;
@@ -188,7 +253,7 @@ class SCI_WooCommerce_Integration {
                     margin-bottom: 20px;
                 }
                 
-                /* Améliorer les formulaires */
+                /* ✅ AMÉLIORER LES FORMULAIRES */
                 .woocommerce-checkout-payment {
                     background: #f8f9fa;
                     padding: 20px;
@@ -204,7 +269,7 @@ class SCI_WooCommerce_Integration {
                     border: 1px solid #dee2e6;
                 }
                 
-                /* Améliorer les boutons */
+                /* ✅ AMÉLIORER LES BOUTONS */
                 .woocommerce #payment #place_order {
                     background: linear-gradient(135deg, #0073aa 0%, #005a87 100%) !important;
                     border: none !important;
@@ -222,7 +287,7 @@ class SCI_WooCommerce_Integration {
                     box-shadow: 0 4px 8px rgba(0,115,170,0.3) !important;
                 }
                 
-                /* Messages d'erreur et de succès */
+                /* ✅ MESSAGES D'ERREUR ET DE SUCCÈS */
                 .woocommerce-message,
                 .woocommerce-error,
                 .woocommerce-info {
@@ -243,7 +308,7 @@ class SCI_WooCommerce_Integration {
                     color: #721c24 !important;
                 }
                 
-                /* Responsive pour mobile */
+                /* ✅ RESPONSIVE POUR MOBILE */
                 @media (max-width: 768px) {
                     body {
                         padding: 10px !important;
@@ -257,7 +322,82 @@ class SCI_WooCommerce_Integration {
                         padding: 15px !important;
                     }
                 }
+                
+                /* ✅ MASQUER AVEC JAVASCRIPT AUSSI (FALLBACK) */
                 </style>
+                
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    // ✅ FONCTION POUR MASQUER LE RÉCAPITULATIF
+                    function hideOrderReview() {
+                        const selectors = [
+                            '.woocommerce-checkout-review-order-table',
+                            '.woocommerce-checkout-review-order',
+                            '.order_review',
+                            '.shop_table.woocommerce-checkout-review-order-table',
+                            '.checkout-review-order-table',
+                            '.wc-checkout-review-order-table',
+                            '#order_review .shop_table',
+                            '#order_review table',
+                            '.woocommerce-checkout .shop_table',
+                            '.checkout .shop_table',
+                            '.order-review .shop_table',
+                            '.cart_totals',
+                            '.cart_totals table',
+                            '.checkout-review-order',
+                            '.woocommerce-order-overview',
+                            '.woocommerce-order-details'
+                        ];
+                        
+                        selectors.forEach(selector => {
+                            const elements = document.querySelectorAll(selector);
+                            elements.forEach(element => {
+                                element.style.display = 'none';
+                                element.style.visibility = 'hidden';
+                                element.style.opacity = '0';
+                                element.style.height = '0';
+                                element.style.overflow = 'hidden';
+                                element.style.position = 'absolute';
+                                element.style.left = '-9999px';
+                                element.style.top = '-9999px';
+                            });
+                        });
+                        
+                        // ✅ MASQUER AUSSI LES TITRES
+                        const titles = document.querySelectorAll('h3');
+                        titles.forEach(title => {
+                            const text = title.textContent.toLowerCase();
+                            if (text.includes('votre commande') || 
+                                text.includes('your order') || 
+                                text.includes('order review') || 
+                                text.includes('récapitulatif') || 
+                                text.includes('commande')) {
+                                title.style.display = 'none';
+                            }
+                        });
+                    }
+                    
+                    // ✅ EXÉCUTER IMMÉDIATEMENT
+                    hideOrderReview();
+                    
+                    // ✅ OBSERVER LES CHANGEMENTS DOM
+                    const observer = new MutationObserver(function(mutations) {
+                        mutations.forEach(function(mutation) {
+                            if (mutation.addedNodes.length > 0) {
+                                hideOrderReview();
+                            }
+                        });
+                    });
+                    
+                    observer.observe(document.body, {
+                        childList: true,
+                        subtree: true
+                    });
+                    
+                    // ✅ VÉRIFIER PÉRIODIQUEMENT (FALLBACK)
+                    setInterval(hideOrderReview, 1000);
+                });
+                </script>
                 <?php
             });
         }
