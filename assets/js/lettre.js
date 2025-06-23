@@ -138,7 +138,7 @@ Cordialement,
             <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
                 <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre courriel :</h4>
                 <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
-                    <li>Ajoutez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> à votre message pour qu'il soit remplacé par le nom du destinataire lors de l'envoi</li>
+                    <li>Pour afficher le nom du destinataire sur le couriel tapez l'index <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code></li>
                     <li>Soyez professionnel et courtois dans votre approche</li>
                     <li>Précisez clairement l'objet de votre demande</li>
                     <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
