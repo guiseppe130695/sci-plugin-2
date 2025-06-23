@@ -12,8 +12,10 @@ class SCI_Shortcodes {
         add_shortcode('sci_favoris', array($this, 'sci_favoris_shortcode'));
         add_shortcode('sci_campaigns', array($this, 'sci_campaigns_shortcode'));
         
-        // Enqueue les scripts pour le frontend
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
+        // ✅ NOUVEAU : Forcer le chargement des scripts sur toutes les pages avec shortcodes
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'), 5);
+        add_action('wp_head', array($this, 'force_enqueue_on_shortcode_pages'), 1);
+        add_action('wp_footer', array($this, 'ensure_scripts_loaded'), 999);
         
         // AJAX handlers pour le frontend
         add_action('wp_ajax_sci_frontend_search', array($this, 'frontend_search_ajax'));
@@ -21,57 +23,163 @@ class SCI_Shortcodes {
     }
     
     /**
-     * Enqueue les scripts pour le frontend
+     * ✅ NOUVEAU : Force le chargement sur les pages avec shortcodes
      */
-    public function enqueue_frontend_scripts() {
-        // Vérifier si on est sur une page avec un shortcode SCI
+    public function force_enqueue_on_shortcode_pages() {
         global $post;
+        
+        // Vérifier si on est sur une page avec un shortcode SCI
         if (is_a($post, 'WP_Post') && (
             has_shortcode($post->post_content, 'sci_panel') ||
             has_shortcode($post->post_content, 'sci_favoris') ||
             has_shortcode($post->post_content, 'sci_campaigns')
         )) {
-            // Scripts JavaScript
-            wp_enqueue_script(
-                'sci-frontend-favoris',
-                plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
-                array(),
-                '1.0',
-                true
-            );
+            // Forcer le chargement immédiat
+            $this->force_enqueue_assets();
+        }
+    }
+    
+    /**
+     * ✅ NOUVEAU : S'assurer que les scripts sont chargés en footer
+     */
+    public function ensure_scripts_loaded() {
+        global $post;
+        
+        if (is_a($post, 'WP_Post') && (
+            has_shortcode($post->post_content, 'sci_panel') ||
+            has_shortcode($post->post_content, 'sci_favoris') ||
+            has_shortcode($post->post_content, 'sci_campaigns')
+        )) {
+            // Vérifier si les scripts sont chargés, sinon les charger
+            if (!wp_script_is('sci-frontend-favoris', 'done')) {
+                $this->force_enqueue_assets();
+            }
+        }
+    }
+    
+    /**
+     * ✅ AMÉLIORÉ : Enqueue les scripts pour le frontend avec détection renforcée
+     */
+    public function enqueue_frontend_scripts() {
+        global $post;
+        
+        $should_load = false;
+        
+        // Méthode 1 : Vérifier le post actuel
+        if (is_a($post, 'WP_Post') && (
+            has_shortcode($post->post_content, 'sci_panel') ||
+            has_shortcode($post->post_content, 'sci_favoris') ||
+            has_shortcode($post->post_content, 'sci_campaigns')
+        )) {
+            $should_load = true;
+        }
+        
+        // Méthode 2 : Vérifier tous les posts de la page (pour les pages avec plusieurs posts)
+        if (!$should_load && is_singular()) {
+            $posts = get_posts(array(
+                'post_type' => get_post_type(),
+                'meta_query' => array(
+                    array(
+                        'key' => '_',
+                        'value' => '\[sci_',
+                        'compare' => 'LIKE'
+                    )
+                )
+            ));
             
-            wp_enqueue_script(
-                'sci-frontend-lettre',
-                plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
-                array(),
-                '1.0',
-                true
-            );
-            
-            wp_enqueue_script(
-                'sci-frontend-payment',
-                plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
-                array(),
-                '1.0',
-                true
-            );
-            
-            // CSS
+            foreach ($posts as $check_post) {
+                if (has_shortcode($check_post->post_content, 'sci_panel') ||
+                    has_shortcode($check_post->post_content, 'sci_favoris') ||
+                    has_shortcode($check_post->post_content, 'sci_campaigns')) {
+                    $should_load = true;
+                    break;
+                }
+            }
+        }
+        
+        // Méthode 3 : Vérifier via les paramètres GET (pour les pages dynamiques)
+        if (!$should_load && (
+            isset($_GET['sci_view']) || 
+            strpos($_SERVER['REQUEST_URI'] ?? '', 'sci') !== false
+        )) {
+            $should_load = true;
+        }
+        
+        // Méthode 4 : Forcer sur certaines pages spécifiques
+        if (!$should_load && (
+            is_page() || 
+            is_single() || 
+            is_front_page() ||
+            is_home()
+        )) {
+            // Vérifier le contenu de la page actuelle
+            $content = get_the_content();
+            if (strpos($content, '[sci_') !== false) {
+                $should_load = true;
+            }
+        }
+        
+        if ($should_load) {
+            $this->force_enqueue_assets();
+        }
+    }
+    
+    /**
+     * ✅ NOUVEAU : Force le chargement des assets
+     */
+    private function force_enqueue_assets() {
+        // ✅ CSS en premier
+        if (!wp_style_is('sci-frontend-style', 'enqueued')) {
             wp_enqueue_style(
                 'sci-frontend-style',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/style.css',
                 array(),
-                '1.0'
+                '1.0.1' // Version incrémentée pour forcer le rechargement
             );
-            
-            // Localisation des variables AJAX
+        }
+        
+        // ✅ Scripts JavaScript
+        if (!wp_script_is('sci-frontend-favoris', 'enqueued')) {
+            wp_enqueue_script(
+                'sci-frontend-favoris',
+                plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
+                array(),
+                '1.0.1',
+                true
+            );
+        }
+        
+        if (!wp_script_is('sci-frontend-lettre', 'enqueued')) {
+            wp_enqueue_script(
+                'sci-frontend-lettre',
+                plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
+                array(),
+                '1.0.1',
+                true
+            );
+        }
+        
+        if (!wp_script_is('sci-frontend-payment', 'enqueued')) {
+            wp_enqueue_script(
+                'sci-frontend-payment',
+                plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
+                array(),
+                '1.0.1',
+                true
+            );
+        }
+        
+        // ✅ Localisation des variables AJAX
+        if (!wp_script_is('sci-frontend-favoris', 'localized')) {
             wp_localize_script('sci-frontend-favoris', 'sci_ajax', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('sci_favoris_nonce')
             ));
-            
-            // Localisation pour le paiement
-            $woocommerce_integration = sci_woocommerce();
+        }
+        
+        // ✅ Localisation pour le paiement
+        $woocommerce_integration = sci_woocommerce();
+        if (!wp_script_is('sci-frontend-payment', 'localized')) {
             wp_localize_script('sci-frontend-payment', 'sciPaymentData', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('sci_campaign_nonce'),
@@ -79,8 +187,10 @@ class SCI_Shortcodes {
                 'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready(),
                 'campaigns_url' => get_permalink() . '?sci_view=campaigns'
             ));
-            
-            // Localisation pour lettre.js
+        }
+        
+        // ✅ Localisation pour lettre.js
+        if (!wp_script_is('sci-frontend-lettre', 'localized')) {
             wp_localize_script('sci-frontend-lettre', 'ajaxurl', admin_url('admin-ajax.php'));
         }
     }
@@ -89,6 +199,9 @@ class SCI_Shortcodes {
      * Shortcode [sci_panel] - Panneau principal de recherche SCI
      */
     public function sci_panel_shortcode($atts) {
+        // ✅ FORCER LE CHARGEMENT DES ASSETS
+        $this->force_enqueue_assets();
+        
         $atts = shortcode_atts(array(
             'title' => '🏢 SCI – Recherche et Contact',
             'show_config_warnings' => 'true'
@@ -128,6 +241,7 @@ class SCI_Shortcodes {
         ob_start();
         ?>
         <div class="sci-frontend-wrapper">
+            <!-- ✅ CSS INLINE POUR GARANTIR LE STYLE -->
             <style>
             .sci-frontend-wrapper {
                 max-width: 1200px;
@@ -245,6 +359,29 @@ class SCI_Shortcodes {
                 border: 1px solid #bee5eb;
                 margin: 15px 0;
             }
+            
+            /* ✅ STYLES POUR LES FAVORIS */
+            .fav-btn {
+                font-size: 1.5rem;
+                background: none;
+                border: none;
+                cursor: pointer;
+                color: #ccc;
+                transition: color 0.3s;
+            }
+            .fav-btn.favori {
+                color: gold;
+            }
+            .fav-btn:hover {
+                color: orange;
+            }
+            
+            /* ✅ STYLES POUR LES CHECKBOXES */
+            .send-letter-checkbox {
+                transform: scale(1.2);
+                margin: 0;
+            }
+            
             @media (max-width: 768px) {
                 .sci-frontend-wrapper {
                     padding: 15px;
@@ -368,19 +505,21 @@ class SCI_Shortcodes {
             <?php endif; ?>
         </div>
         
-        <!-- Popup lettre (identique à celui de l'admin) -->
+        <!-- ✅ POPUP LETTRE AVEC STYLES INLINE -->
         <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
             <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
                 <!-- Étape 1 : Liste des SCI sélectionnées -->
                 <div class="step" id="step-1">
                     <h2>📋 SCI sélectionnées</h2>
                     <p style="color: #666; margin-bottom: 20px;">Vérifiez votre sélection avant de continuer</p>
-                    <ul id="selected-sci-list" style="max-height:350px; overflow-y:auto; border:1px solid #ddd; padding:15px; margin-bottom:25px; border-radius:6px;"></ul>
+                    <ul id="selected-sci-list" style="max-height:350px; overflow-y:auto; border:1px solid #ddd; padding:15px; margin-bottom:25px; border-radius:6px; background-color: #f9f9f9; list-style: none;">
+                        <!-- Les SCI sélectionnées seront ajoutées ici par JavaScript -->
+                    </ul>
                     <div style="text-align: center;">
-                        <button id="to-step-2" class="button button-primary button-large">
+                        <button id="to-step-2" class="sci-button" style="background: linear-gradient(135deg, #0073aa 0%, #005a87 100%); color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 16px;">
                             ✍️ Rédiger le courriel →
                         </button>
-                        <button id="close-popup-1" class="button" style="margin-left:15px;">Fermer</button>
+                        <button id="close-popup-1" class="sci-button" style="background: #6c757d; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-left: 15px;">Fermer</button>
                     </div>
                 </div>
                 
@@ -390,6 +529,53 @@ class SCI_Shortcodes {
                 </div>
             </div>
         </div>
+        
+        <!-- ✅ SCRIPT INLINE POUR GARANTIR LE FONCTIONNEMENT -->
+        <script>
+        // Vérifier que les variables AJAX sont disponibles
+        if (typeof sci_ajax === 'undefined') {
+            window.sci_ajax = {
+                ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                nonce: '<?php echo wp_create_nonce('sci_favoris_nonce'); ?>'
+            };
+        }
+        
+        if (typeof sciPaymentData === 'undefined') {
+            window.sciPaymentData = {
+                ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                nonce: '<?php echo wp_create_nonce('sci_campaign_nonce'); ?>',
+                unit_price: <?php echo $woocommerce_integration->get_unit_price(); ?>,
+                woocommerce_ready: <?php echo $woocommerce_integration->is_woocommerce_ready() ? 'true' : 'false'; ?>,
+                campaigns_url: '<?php echo get_permalink() . '?sci_view=campaigns'; ?>'
+            };
+        }
+        
+        if (typeof ajaxurl === 'undefined') {
+            window.ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
+        }
+        
+        // Forcer le rechargement des scripts si nécessaire
+        document.addEventListener('DOMContentLoaded', function() {
+            // Vérifier si les fonctions principales existent
+            if (typeof updateSelectedCount === 'undefined' || typeof window.getSelectedEntries === 'undefined') {
+                console.log('Scripts SCI non chargés, tentative de rechargement...');
+                
+                // Charger les scripts manuellement
+                const scripts = [
+                    '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js'; ?>',
+                    '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js'; ?>',
+                    '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js'; ?>'
+                ];
+                
+                scripts.forEach(function(src) {
+                    const script = document.createElement('script');
+                    script.src = src + '?v=' + Date.now();
+                    script.async = false;
+                    document.head.appendChild(script);
+                });
+            }
+        });
+        </script>
         <?php
         return ob_get_clean();
     }
@@ -398,6 +584,9 @@ class SCI_Shortcodes {
      * Shortcode [sci_favoris] - Liste des favoris
      */
     public function sci_favoris_shortcode($atts) {
+        // ✅ FORCER LE CHARGEMENT DES ASSETS
+        $this->force_enqueue_assets();
+        
         $atts = shortcode_atts(array(
             'title' => '⭐ Mes SCI Favoris',
             'show_empty_message' => 'true'
@@ -413,6 +602,79 @@ class SCI_Shortcodes {
         ob_start();
         ?>
         <div class="sci-frontend-wrapper">
+            <!-- ✅ CSS INLINE POUR GARANTIR LE STYLE -->
+            <style>
+            .sci-frontend-wrapper {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #fff;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .sci-frontend-wrapper h1 {
+                color: #333;
+                border-bottom: 2px solid #0073aa;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+            }
+            .sci-frontend-wrapper .sci-button {
+                background: linear-gradient(135deg, #0073aa 0%, #005a87 100%);
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-weight: 600;
+                margin-right: 10px;
+                margin-bottom: 10px;
+                transition: all 0.3s ease;
+            }
+            .sci-frontend-wrapper .sci-button:hover {
+                background: linear-gradient(135deg, #005a87 0%, #004a73 100%);
+                transform: translateY(-1px);
+            }
+            .sci-frontend-wrapper .sci-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+                background: white;
+                border-radius: 6px;
+                overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .sci-frontend-wrapper .sci-table th,
+            .sci-frontend-wrapper .sci-table td {
+                padding: 12px;
+                text-align: left;
+                border-bottom: 1px solid #eee;
+            }
+            .sci-frontend-wrapper .sci-table th {
+                background: #f8f9fa;
+                font-weight: 600;
+                color: #333;
+            }
+            .sci-frontend-wrapper .sci-table tr:hover {
+                background: #f8f9fa;
+            }
+            .sci-error {
+                background: #f8d7da;
+                color: #721c24;
+                padding: 12px;
+                border-radius: 4px;
+                border: 1px solid #f5c6cb;
+                margin: 15px 0;
+            }
+            .sci-info {
+                background: #d1ecf1;
+                color: #0c5460;
+                padding: 12px;
+                border-radius: 4px;
+                border: 1px solid #bee5eb;
+                margin: 15px 0;
+            }
+            </style>
+            
             <h1><?php echo esc_html($atts['title']); ?></h1>
             
             <?php if (empty($favoris) && $atts['show_empty_message'] === 'true'): ?>
@@ -456,6 +718,14 @@ class SCI_Shortcodes {
         </div>
         
         <script>
+        // Vérifier que les variables AJAX sont disponibles
+        if (typeof sci_ajax === 'undefined') {
+            window.sci_ajax = {
+                ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                nonce: '<?php echo wp_create_nonce('sci_favoris_nonce'); ?>'
+            };
+        }
+        
         document.addEventListener('DOMContentLoaded', function () {
             document.querySelectorAll('.remove-fav-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -498,6 +768,9 @@ class SCI_Shortcodes {
      * Shortcode [sci_campaigns] - Liste des campagnes
      */
     public function sci_campaigns_shortcode($atts) {
+        // ✅ FORCER LE CHARGEMENT DES ASSETS
+        $this->force_enqueue_assets();
+        
         $atts = shortcode_atts(array(
             'title' => '📬 Mes Campagnes de Lettres',
             'show_empty_message' => 'true'
@@ -522,6 +795,83 @@ class SCI_Shortcodes {
         ob_start();
         ?>
         <div class="sci-frontend-wrapper">
+            <!-- ✅ CSS INLINE POUR GARANTIR LE STYLE -->
+            <style>
+            .sci-frontend-wrapper {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #fff;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .sci-frontend-wrapper h1 {
+                color: #333;
+                border-bottom: 2px solid #0073aa;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+            }
+            .sci-frontend-wrapper .sci-button {
+                background: linear-gradient(135deg, #0073aa 0%, #005a87 100%);
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-weight: 600;
+                margin-right: 10px;
+                margin-bottom: 10px;
+                transition: all 0.3s ease;
+                text-decoration: none;
+                display: inline-block;
+            }
+            .sci-frontend-wrapper .sci-button:hover {
+                background: linear-gradient(135deg, #005a87 0%, #004a73 100%);
+                transform: translateY(-1px);
+                color: white;
+                text-decoration: none;
+            }
+            .sci-frontend-wrapper .sci-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+                background: white;
+                border-radius: 6px;
+                overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .sci-frontend-wrapper .sci-table th,
+            .sci-frontend-wrapper .sci-table td {
+                padding: 12px;
+                text-align: left;
+                border-bottom: 1px solid #eee;
+            }
+            .sci-frontend-wrapper .sci-table th {
+                background: #f8f9fa;
+                font-weight: 600;
+                color: #333;
+            }
+            .sci-frontend-wrapper .sci-table tr:hover {
+                background: #f8f9fa;
+            }
+            .sci-error {
+                background: #f8d7da;
+                color: #721c24;
+                padding: 12px;
+                border-radius: 4px;
+                border: 1px solid #f5c6cb;
+                margin: 15px 0;
+            }
+            .sci-info {
+                background: #d1ecf1;
+                color: #0c5460;
+                padding: 12px;
+                border-radius: 4px;
+                border: 1px solid #bee5eb;
+                margin: 15px 0;
+            }
+            </style>
+            
             <h1><?php echo esc_html($atts['title']); ?></h1>
             
             <?php if (empty($campaigns) && $atts['show_empty_message'] === 'true'): ?>
@@ -583,6 +933,67 @@ class SCI_Shortcodes {
         ob_start();
         ?>
         <div class="sci-frontend-wrapper">
+            <!-- ✅ CSS INLINE POUR GARANTIR LE STYLE -->
+            <style>
+            .sci-frontend-wrapper {
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #fff;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .sci-frontend-wrapper h1 {
+                color: #333;
+                border-bottom: 2px solid #0073aa;
+                padding-bottom: 10px;
+                margin-bottom: 20px;
+            }
+            .sci-frontend-wrapper .sci-button {
+                background: linear-gradient(135deg, #0073aa 0%, #005a87 100%);
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-weight: 600;
+                margin-right: 10px;
+                margin-bottom: 10px;
+                transition: all 0.3s ease;
+                text-decoration: none;
+                display: inline-block;
+            }
+            .sci-frontend-wrapper .sci-button:hover {
+                background: linear-gradient(135deg, #005a87 0%, #004a73 100%);
+                transform: translateY(-1px);
+                color: white;
+                text-decoration: none;
+            }
+            .sci-frontend-wrapper .sci-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+                background: white;
+                border-radius: 6px;
+                overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .sci-frontend-wrapper .sci-table th,
+            .sci-frontend-wrapper .sci-table td {
+                padding: 12px;
+                text-align: left;
+                border-bottom: 1px solid #eee;
+            }
+            .sci-frontend-wrapper .sci-table th {
+                background: #f8f9fa;
+                font-weight: 600;
+                color: #333;
+            }
+            .sci-frontend-wrapper .sci-table tr:hover {
+                background: #f8f9fa;
+            }
+            </style>
+            
             <h1>📬 Détails de la campagne : <?php echo esc_html($campaign['title']); ?></h1>
             
             <a href="<?php echo remove_query_arg(array('sci_view', 'id')); ?>" class="sci-button">
