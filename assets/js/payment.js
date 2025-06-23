@@ -256,6 +256,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="recap-section">
                     <h3>📦 Services inclus</h3>
                     <div class="services-list">
+                        <div class="service-item">✅ Génération automatique des PDFs personnalisés</div>
+                        <div class="service-item">✅ Envoi en lettre recommandée avec accusé de réception</div>
                         <div class="service-item">✅ Suivi de la distribution en temps réel</div>
                         <div class="service-item">✅ Historique complet dans vos campagnes</div>
                         <div class="service-item">✅ Support technique inclus</div>
@@ -512,8 +514,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const successDiv = document.getElementById('payment-success');
         
         // Masquer le checkout et afficher le succès
-        checkoutContainer.style.display = 'none';
-        successDiv.style.display = 'block';
+        if (checkoutContainer) checkoutContainer.style.display = 'none';
+        if (successDiv) successDiv.style.display = 'block';
         
         // ✅ DÉSACTIVER LE MENU CONTEXTUEL SUR TOUTE LA PAGE
         disableContextMenu();
@@ -522,15 +524,18 @@ document.addEventListener('DOMContentLoaded', function() {
         simulateSendingProcess();
         
         // Event listener pour le bouton "Voir mes campagnes"
-        document.getElementById('view-campaigns').addEventListener('click', function() {
-            document.getElementById('letters-popup').style.display = 'none';
-            if (window.resetSciPopup) window.resetSciPopup();
-            
-            // ✅ RÉACTIVER LE MENU CONTEXTUEL AVANT DE QUITTER
-            enableContextMenu();
-            
-            window.location.href = sciPaymentData.campaigns_url || (window.location.origin + '/wp-admin/admin.php?page=sci-campaigns');
-        });
+        const viewCampaignsBtn = document.getElementById('view-campaigns');
+        if (viewCampaignsBtn) {
+            viewCampaignsBtn.addEventListener('click', function() {
+                // ✅ RÉACTIVER LE MENU CONTEXTUEL AVANT DE QUITTER
+                enableContextMenu();
+                
+                document.getElementById('letters-popup').style.display = 'none';
+                if (window.resetSciPopup) window.resetSciPopup();
+                
+                window.location.href = sciPaymentData.campaigns_url || (window.location.origin + '/wp-admin/admin.php?page=sci-campaigns');
+            });
+        }
         
         // ✅ PROGRAMMER LA RÉACTIVATION AUTOMATIQUE APRÈS 30 SECONDES
         setTimeout(() => {
@@ -540,6 +545,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // ✅ NOUVELLE FONCTION : DÉSACTIVER LE MENU CONTEXTUEL
     function disableContextMenu() {
+        // Vérifier si déjà désactivé pour éviter les doublons
+        if (document.body.hasAttribute('data-context-menu-disabled')) {
+            return;
+        }
+        
+        // Marquer comme désactivé
+        document.body.setAttribute('data-context-menu-disabled', 'true');
+        
         // Désactiver le clic droit
         document.addEventListener('contextmenu', preventContextMenu, true);
         
@@ -583,6 +596,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // ✅ NOUVELLE FONCTION : RÉACTIVER LE MENU CONTEXTUEL
     function enableContextMenu() {
+        // Vérifier si déjà réactivé
+        if (!document.body.hasAttribute('data-context-menu-disabled')) {
+            return;
+        }
+        
+        // Supprimer le marqueur
+        document.body.removeAttribute('data-context-menu-disabled');
+        
         // Réactiver le clic droit
         document.removeEventListener('contextmenu', preventContextMenu, true);
         
@@ -642,6 +663,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const progressBar = document.getElementById('sending-progress');
         const statusDiv = document.getElementById('sending-status');
         
+        if (!progressBar || !statusDiv) {
+            console.warn('Éléments de progression non trouvés');
+            return;
+        }
+        
         const steps = [
             { progress: 15, text: 'Validation du paiement...' },
             { progress: 30, text: 'Génération des PDFs personnalisés...' },
@@ -656,7 +682,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const stepInterval = setInterval(() => {
             if (currentStep < steps.length) {
                 const step = steps[currentStep];
-                animateProgress(progressBar, progressBar.style.width.replace('%', '') || 0, step.progress, 1000);
+                const currentProgress = progressBar.style.width.replace('%', '') || 0;
+                animateProgress(progressBar, currentProgress, step.progress, 1000);
                 statusDiv.textContent = step.text;
                 currentStep++;
             } else {
@@ -681,7 +708,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div style="background: #e7f3ff; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
                 <h4 style="margin-top: 0; color: #0056b3;">💡 Conseils pour votre courriel :</h4>
                 <ul style="margin-bottom: 0; font-size: 14px; color: #495057;">
-                    <li>Ajoutez <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code> à votre message pour qu'il soit remplacé par le nom du destinataire lors de l'envoi</li>
+                    <li>Pour afficher le nom du destinataire sur le couriel tapez l'index <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code></li>
                     <li>Soyez professionnel et courtois dans votre approche</li>
                     <li>Précisez clairement l'objet de votre demande</li>
                     <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
@@ -700,17 +727,27 @@ document.addEventListener('DOMContentLoaded', function() {
         step2.innerHTML = contentHtml;
         
         // Réattacher les event listeners
-        document.getElementById('back-to-step-1').addEventListener('click', function() {
-            document.getElementById('step-2').style.display = 'none';
-            document.getElementById('step-1').style.display = 'block';
-        });
-        document.getElementById('close-popup-2').addEventListener('click', function() {
-            document.getElementById('letters-popup').style.display = 'none';
-            if (window.resetSciPopup) window.resetSciPopup();
-        });
+        const backBtn = document.getElementById('back-to-step-1');
+        const closeBtn = document.getElementById('close-popup-2');
+        
+        if (backBtn) {
+            backBtn.addEventListener('click', function() {
+                document.getElementById('step-2').style.display = 'none';
+                document.getElementById('step-1').style.display = 'block';
+            });
+        }
+        
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function() {
+                document.getElementById('letters-popup').style.display = 'none';
+                if (window.resetSciPopup) window.resetSciPopup();
+            });
+        }
     }
     
     function animateProgress(element, from, to, duration) {
+        if (!element) return;
+        
         const start = parseFloat(from) || 0;
         const end = parseFloat(to);
         const startTime = Date.now();
@@ -742,16 +779,22 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // L'insérer avant les boutons
         const step2 = document.getElementById('step-2');
-        const buttons = step2.querySelector('#send-campaign')?.parentNode || 
-                       step2.querySelector('#proceed-to-payment')?.parentNode ||
-                       step2.querySelector('#create-order-btn')?.parentNode;
-        if (buttons) {
-            step2.insertBefore(errorDiv, buttons);
+        if (step2) {
+            const buttons = step2.querySelector('#send-campaign')?.parentNode || 
+                           step2.querySelector('#proceed-to-payment')?.parentNode ||
+                           step2.querySelector('#create-order-btn')?.parentNode;
+            if (buttons) {
+                step2.insertBefore(errorDiv, buttons);
+            } else {
+                step2.appendChild(errorDiv);
+            }
         }
         
         // La supprimer après 5 secondes
         setTimeout(() => {
-            errorDiv.remove();
+            if (errorDiv.parentNode) {
+                errorDiv.remove();
+            }
         }, 5000);
     }
     
@@ -760,6 +803,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function escapeHtml(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;

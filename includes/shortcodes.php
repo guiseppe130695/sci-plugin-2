@@ -12,7 +12,7 @@ class SCI_Shortcodes {
         add_shortcode('sci_favoris', array($this, 'sci_favoris_shortcode'));
         add_shortcode('sci_campaigns', array($this, 'sci_campaigns_shortcode'));
         
-        // ✅ NOUVEAU : Forcer le chargement des scripts sur toutes les pages avec shortcodes
+        // ✅ FORCER LE CHARGEMENT DES SCRIPTS SUR TOUTES LES PAGES AVEC SHORTCODES
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'), 5);
         add_action('wp_head', array($this, 'force_enqueue_on_shortcode_pages'), 1);
         add_action('wp_footer', array($this, 'ensure_scripts_loaded'), 999);
@@ -23,7 +23,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ NOUVEAU : Force le chargement sur les pages avec shortcodes
+     * ✅ Force le chargement sur les pages avec shortcodes
      */
     public function force_enqueue_on_shortcode_pages() {
         global $post;
@@ -40,7 +40,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ NOUVEAU : S'assurer que les scripts sont chargés en footer
+     * ✅ S'assurer que les scripts sont chargés en footer
      */
     public function ensure_scripts_loaded() {
         global $post;
@@ -58,7 +58,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ AMÉLIORÉ : Enqueue les scripts pour le frontend avec détection renforcée
+     * ✅ Enqueue les scripts pour le frontend avec détection renforcée
      */
     public function enqueue_frontend_scripts() {
         global $post;
@@ -74,30 +74,7 @@ class SCI_Shortcodes {
             $should_load = true;
         }
         
-        // Méthode 2 : Vérifier tous les posts de la page (pour les pages avec plusieurs posts)
-        if (!$should_load && is_singular()) {
-            $posts = get_posts(array(
-                'post_type' => get_post_type(),
-                'meta_query' => array(
-                    array(
-                        'key' => '_',
-                        'value' => '\[sci_',
-                        'compare' => 'LIKE'
-                    )
-                )
-            ));
-            
-            foreach ($posts as $check_post) {
-                if (has_shortcode($check_post->post_content, 'sci_panel') ||
-                    has_shortcode($check_post->post_content, 'sci_favoris') ||
-                    has_shortcode($check_post->post_content, 'sci_campaigns')) {
-                    $should_load = true;
-                    break;
-                }
-            }
-        }
-        
-        // Méthode 3 : Vérifier via les paramètres GET (pour les pages dynamiques)
+        // Méthode 2 : Vérifier via les paramètres GET (pour les pages dynamiques)
         if (!$should_load && (
             isset($_GET['sci_view']) || 
             strpos($_SERVER['REQUEST_URI'] ?? '', 'sci') !== false
@@ -105,7 +82,7 @@ class SCI_Shortcodes {
             $should_load = true;
         }
         
-        // Méthode 4 : Forcer sur certaines pages spécifiques
+        // Méthode 3 : Forcer sur certaines pages spécifiques
         if (!$should_load && (
             is_page() || 
             is_single() || 
@@ -113,8 +90,7 @@ class SCI_Shortcodes {
             is_home()
         )) {
             // Vérifier le contenu de la page actuelle
-            $content = get_the_content();
-            if (strpos($content, '[sci_') !== false) {
+            if ($post && strpos($post->post_content, '[sci_') !== false) {
                 $should_load = true;
             }
         }
@@ -125,7 +101,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ NOUVEAU : Force le chargement des assets
+     * ✅ Force le chargement des assets
      */
     private function force_enqueue_assets() {
         // ✅ CSS en premier
@@ -134,7 +110,7 @@ class SCI_Shortcodes {
                 'sci-frontend-style',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/style.css',
                 array(),
-                '1.0.1' // Version incrémentée pour forcer le rechargement
+                '1.0.2' // Version incrémentée pour forcer le rechargement
             );
         }
         
@@ -144,7 +120,7 @@ class SCI_Shortcodes {
                 'sci-frontend-favoris',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
                 array(),
-                '1.0.1',
+                '1.0.2',
                 true
             );
         }
@@ -154,7 +130,7 @@ class SCI_Shortcodes {
                 'sci-frontend-lettre',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
                 array(),
-                '1.0.1',
+                '1.0.2',
                 true
             );
         }
@@ -164,22 +140,21 @@ class SCI_Shortcodes {
                 'sci-frontend-payment',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
                 array(),
-                '1.0.1',
+                '1.0.2',
                 true
             );
         }
         
-        // ✅ Localisation des variables AJAX
-        if (!wp_script_is('sci-frontend-favoris', 'localized')) {
+        // ✅ Localisation des variables AJAX (une seule fois)
+        static $localized = false;
+        if (!$localized) {
             wp_localize_script('sci-frontend-favoris', 'sci_ajax', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('sci_favoris_nonce')
             ));
-        }
-        
-        // ✅ Localisation pour le paiement
-        $woocommerce_integration = sci_woocommerce();
-        if (!wp_script_is('sci-frontend-payment', 'localized')) {
+            
+            // ✅ Localisation pour le paiement
+            $woocommerce_integration = sci_woocommerce();
             wp_localize_script('sci-frontend-payment', 'sciPaymentData', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('sci_campaign_nonce'),
@@ -187,11 +162,11 @@ class SCI_Shortcodes {
                 'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready(),
                 'campaigns_url' => get_permalink() . '?sci_view=campaigns'
             ));
-        }
-        
-        // ✅ Localisation pour lettre.js
-        if (!wp_script_is('sci-frontend-lettre', 'localized')) {
+            
+            // ✅ Localisation pour lettre.js
             wp_localize_script('sci-frontend-lettre', 'ajaxurl', admin_url('admin-ajax.php'));
+            
+            $localized = true;
         }
     }
     
@@ -554,23 +529,33 @@ class SCI_Shortcodes {
             window.ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
         }
         
-        // Forcer le rechargement des scripts si nécessaire
+        // ✅ FORCER LE RECHARGEMENT DES SCRIPTS SI NÉCESSAIRE
         document.addEventListener('DOMContentLoaded', function() {
             // Vérifier si les fonctions principales existent
             if (typeof updateSelectedCount === 'undefined' || typeof window.getSelectedEntries === 'undefined') {
                 console.log('Scripts SCI non chargés, tentative de rechargement...');
                 
-                // Charger les scripts manuellement
+                // Charger les scripts manuellement avec cache busting
                 const scripts = [
                     '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js'; ?>',
                     '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js'; ?>',
                     '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js'; ?>'
                 ];
                 
+                let loadedScripts = 0;
                 scripts.forEach(function(src) {
                     const script = document.createElement('script');
                     script.src = src + '?v=' + Date.now();
                     script.async = false;
+                    script.onload = function() {
+                        loadedScripts++;
+                        if (loadedScripts === scripts.length) {
+                            console.log('✅ Tous les scripts SCI rechargés');
+                        }
+                    };
+                    script.onerror = function() {
+                        console.error('❌ Erreur chargement script:', src);
+                    };
                     document.head.appendChild(script);
                 });
             }
