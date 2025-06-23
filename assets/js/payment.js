@@ -341,10 +341,6 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             
             <div id="checkout-container" style="display: none;">
-                <div class="checkout-header">
-                    <h3>🔒 Paiement sécurisé WooCommerce</h3>
-                    <p>Vos données de paiement sont protégées et chiffrées</p>
-                </div>
                 <div id="embedded-checkout">
                     <!-- Le checkout WooCommerce sera chargé ici -->
                 </div>
@@ -521,6 +517,9 @@ document.addEventListener('DOMContentLoaded', function() {
         checkoutContainer.style.display = 'none';
         successDiv.style.display = 'block';
         
+        // ✅ DÉSACTIVER LE MENU CONTEXTUEL SUR TOUTE LA PAGE
+        disableContextMenu();
+        
         // Simuler le processus d'envoi
         simulateSendingProcess();
         
@@ -528,18 +527,117 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('view-campaigns').addEventListener('click', function() {
             document.getElementById('letters-popup').style.display = 'none';
             if (window.resetSciPopup) window.resetSciPopup();
+            
+            // ✅ RÉACTIVER LE MENU CONTEXTUEL AVANT DE QUITTER
+            enableContextMenu();
+            
             window.location.href = sciPaymentData.campaigns_url || (window.location.origin + '/wp-admin/admin.php?page=sci-campaigns');
         });
         
-        // Programmer la fermeture automatique après 15 secondes
+        // ✅ PROGRAMMER LA RÉACTIVATION AUTOMATIQUE APRÈS 30 SECONDES
         setTimeout(() => {
-            if (confirm('Paiement confirmé ! Voulez-vous consulter vos campagnes maintenant ?')) {
-                document.getElementById('view-campaigns').click();
-            } else {
-                document.getElementById('letters-popup').style.display = 'none';
-                if (window.resetSciPopup) window.resetSciPopup();
+            enableContextMenu();
+        }, 30000);
+    }
+    
+    // ✅ NOUVELLE FONCTION : DÉSACTIVER LE MENU CONTEXTUEL
+    function disableContextMenu() {
+        // Désactiver le clic droit
+        document.addEventListener('contextmenu', preventContextMenu, true);
+        
+        // Désactiver les raccourcis clavier
+        document.addEventListener('keydown', preventKeyboardShortcuts, true);
+        
+        // Désactiver la sélection de texte
+        document.body.style.userSelect = 'none';
+        document.body.style.webkitUserSelect = 'none';
+        document.body.style.mozUserSelect = 'none';
+        document.body.style.msUserSelect = 'none';
+        
+        // Désactiver le glisser-déposer
+        document.addEventListener('dragstart', preventDragDrop, true);
+        
+        // Ajouter un style CSS pour désactiver la sélection
+        const style = document.createElement('style');
+        style.id = 'disable-context-menu-style';
+        style.textContent = `
+            * {
+                -webkit-user-select: none !important;
+                -moz-user-select: none !important;
+                -ms-user-select: none !important;
+                user-select: none !important;
+                -webkit-touch-callout: none !important;
+                -webkit-tap-highlight-color: transparent !important;
             }
-        }, 15000);
+            
+            /* Permettre la sélection uniquement pour les champs de saisie */
+            input, textarea, [contenteditable="true"] {
+                -webkit-user-select: text !important;
+                -moz-user-select: text !important;
+                -ms-user-select: text !important;
+                user-select: text !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        console.log('🚫 Menu contextuel désactivé');
+    }
+    
+    // ✅ NOUVELLE FONCTION : RÉACTIVER LE MENU CONTEXTUEL
+    function enableContextMenu() {
+        // Réactiver le clic droit
+        document.removeEventListener('contextmenu', preventContextMenu, true);
+        
+        // Réactiver les raccourcis clavier
+        document.removeEventListener('keydown', preventKeyboardShortcuts, true);
+        
+        // Réactiver la sélection de texte
+        document.body.style.userSelect = '';
+        document.body.style.webkitUserSelect = '';
+        document.body.style.mozUserSelect = '';
+        document.body.style.msUserSelect = '';
+        
+        // Réactiver le glisser-déposer
+        document.removeEventListener('dragstart', preventDragDrop, true);
+        
+        // Supprimer le style CSS de désactivation
+        const style = document.getElementById('disable-context-menu-style');
+        if (style) {
+            style.remove();
+        }
+        
+        console.log('✅ Menu contextuel réactivé');
+    }
+    
+    // ✅ FONCTIONS DE PRÉVENTION
+    function preventContextMenu(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    }
+    
+    function preventKeyboardShortcuts(e) {
+        // Désactiver F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S, etc.
+        if (
+            e.key === 'F12' ||
+            (e.ctrlKey && e.shiftKey && e.key === 'I') ||
+            (e.ctrlKey && e.shiftKey && e.key === 'C') ||
+            (e.ctrlKey && e.shiftKey && e.key === 'J') ||
+            (e.ctrlKey && e.key === 'u') ||
+            (e.ctrlKey && e.key === 's') ||
+            (e.ctrlKey && e.key === 'a') ||
+            (e.ctrlKey && e.key === 'p')
+        ) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    }
+    
+    function preventDragDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
     }
     
     function simulateSendingProcess() {
