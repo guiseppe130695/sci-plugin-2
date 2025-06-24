@@ -62,12 +62,115 @@ class SCI_Campaign_Manager {
             KEY campaign_id (campaign_id),
             KEY status (status),
             KEY laposte_uid (laposte_uid),
+            KEY sci_siren (sci_siren),
             FOREIGN KEY (campaign_id) REFERENCES {$this->campaigns_table}(id) ON DELETE CASCADE
         ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql_campaigns);
         dbDelta($sql_letters);
+    }
+    
+    /**
+     * ✅ NOUVELLE MÉTHODE : Récupère les SIRENs des SCI déjà contactées par l'utilisateur
+     */
+    public function get_user_contacted_sirens($user_id = null) {
+        global $wpdb;
+        
+        if (!$user_id) {
+            $user_id = get_current_user_id();
+        }
+        
+        if (!$user_id) {
+            return array();
+        }
+        
+        // Récupérer tous les SIRENs des SCI pour lesquelles l'utilisateur a envoyé des lettres
+        // (statut 'sent' ou 'processing' - on exclut 'failed' et 'pending')
+        $sirens = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT cl.sci_siren 
+             FROM {$this->campaign_letters_table} cl
+             INNER JOIN {$this->campaigns_table} c ON cl.campaign_id = c.id
+             WHERE c.user_id = %d 
+             AND cl.status IN ('sent', 'processing')
+             ORDER BY cl.sent_at DESC",
+            $user_id
+        ));
+        
+        return $sirens ? $sirens : array();
+    }
+    
+    /**
+     * ✅ NOUVELLE MÉTHODE : Récupère les détails des SCI contactées avec informations de campagne
+     */
+    public function get_user_contacted_sci_details($user_id = null) {
+        global $wpdb;
+        
+        if (!$user_id) {
+            $user_id = get_current_user_id();
+        }
+        
+        if (!$user_id) {
+            return array();
+        }
+        
+        // Récupérer les détails complets des SCI contactées
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT 
+                cl.sci_siren,
+                cl.sci_denomination,
+                cl.sci_dirigeant,
+                cl.status,
+                cl.sent_at,
+                cl.laposte_uid,
+                c.title as campaign_title,
+                c.created_at as campaign_date,
+                COUNT(*) as contact_count,
+                MAX(cl.sent_at) as last_contact_date
+             FROM {$this->campaign_letters_table} cl
+             INNER JOIN {$this->campaigns_table} c ON cl.campaign_id = c.id
+             WHERE c.user_id = %d 
+             AND cl.status IN ('sent', 'processing')
+             GROUP BY cl.sci_siren
+             ORDER BY last_contact_date DESC",
+            $user_id
+        ), ARRAY_A);
+        
+        // Organiser par SIREN pour un accès rapide
+        $contacted_sci = array();
+        foreach ($results as $result) {
+            $contacted_sci[$result['sci_siren']] = $result;
+        }
+        
+        return $contacted_sci;
+    }
+    
+    /**
+     * ✅ NOUVELLE MÉTHODE : Vérifie si une SCI spécifique a été contactée
+     */
+    public function is_sci_contacted($siren, $user_id = null) {
+        global $wpdb;
+        
+        if (!$user_id) {
+            $user_id = get_current_user_id();
+        }
+        
+        if (!$user_id || !$siren) {
+            return false;
+        }
+        
+        $count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) 
+             FROM {$this->campaign_letters_table} cl
+             INNER JOIN {$this->campaigns_table} c ON cl.campaign_id = c.id
+             WHERE c.user_id = %d 
+             AND cl.sci_siren = %s
+             AND cl.status IN ('sent', 'processing')",
+            $user_id,
+            $siren
+        ));
+        
+        return $count > 0;
     }
     
     /**

@@ -177,6 +177,7 @@ function sci_afficher_panel() {
                         <th>Adresse</th>
                         <th>Ville</th>
                         <th>Code Postal</th>
+                        <th>Statut</th> <!-- ✅ NOUVELLE COLONNE -->
                         <th>Sélection</th>
                     </tr>
                 </thead>
@@ -199,6 +200,13 @@ function sci_afficher_panel() {
                             <td><?php echo esc_html($res['adresse']); ?></td>
                             <td><?php echo esc_html($res['ville']); ?></td>
                             <td><?php echo esc_html($res['code_postal']); ?></td>
+                            <td>
+                                <!-- ✅ NOUVELLE CELLULE POUR LE STATUT DE CONTACT -->
+                                <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>">
+                                    <span class="contact-status-icon">📧</span>
+                                    <span class="contact-status-text">Vérification...</span>
+                                </span>
+                            </td>
                             <td>
                                 <input type="checkbox" class="send-letter-checkbox"
                                     data-denomination="<?php echo esc_attr($res['denomination']); ?>"
@@ -364,10 +372,15 @@ function sci_enqueue_admin_scripts() {
         true
     );
 
+    // ✅ NOUVEAU : Récupérer les SIRENs contactés pour l'admin
+    $campaign_manager = sci_campaign_manager();
+    $contacted_sirens = $campaign_manager->get_user_contacted_sirens();
+
     // Localisation des variables AJAX pour le script favoris
     wp_localize_script('sci-favoris', 'sci_ajax', array(
         'ajax_url' => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('sci_favoris_nonce')
+        'nonce' => wp_create_nonce('sci_favoris_nonce'),
+        'contacted_sirens' => $contacted_sirens // ✅ NOUVEAU : Liste des SIRENs contactés
     ));
 
     // Localisation pour le paiement

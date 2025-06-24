@@ -20,6 +20,50 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // ✅ NOUVELLE FONCTION : Met à jour le statut de contact des SCI
+    function updateContactStatus() {
+        // Vérifier que les données sont disponibles
+        if (typeof sci_ajax === 'undefined' || !sci_ajax.contacted_sirens) {
+            console.log('Données de contact non disponibles');
+            return;
+        }
+
+        const contactedSirens = sci_ajax.contacted_sirens;
+        console.log('SIRENs contactés:', contactedSirens);
+
+        // Parcourir tous les éléments de statut de contact
+        const statusElements = document.querySelectorAll('.contact-status');
+        
+        statusElements.forEach(statusElement => {
+            const siren = statusElement.getAttribute('data-siren');
+            const iconElement = statusElement.querySelector('.contact-status-icon');
+            const textElement = statusElement.querySelector('.contact-status-text');
+            
+            if (!siren || !iconElement || !textElement) {
+                return;
+            }
+
+            // Vérifier si cette SCI a été contactée
+            const isContacted = contactedSirens.includes(siren);
+            
+            if (isContacted) {
+                // SCI déjà contactée
+                statusElement.className = 'contact-status contacted';
+                iconElement.textContent = '✅';
+                textElement.textContent = 'Contacté';
+                statusElement.title = 'Cette SCI a déjà été contactée dans une campagne précédente';
+            } else {
+                // SCI non contactée
+                statusElement.className = 'contact-status not-contacted';
+                iconElement.textContent = '📧';
+                textElement.textContent = 'Nouveau';
+                statusElement.title = 'Cette SCI n\'a jamais été contactée';
+            }
+        });
+
+        console.log('Statut de contact mis à jour pour', statusElements.length, 'SCI');
+    }
+
     // Synchronise les favoris avec la base de données
     function syncFavorisWithDB(action, sciData = null) {
         const formData = new FormData();
@@ -87,5 +131,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Initialiser l'affichage
     updateFavButtons();
+    
+    // ✅ NOUVEAU : Mettre à jour le statut de contact après un court délai
+    setTimeout(updateContactStatus, 500);
+
+    // ✅ NOUVEAU : Exposer la fonction globalement pour les autres scripts
+    window.updateContactStatus = updateContactStatus;
 });

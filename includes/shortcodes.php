@@ -173,7 +173,7 @@ class SCI_Shortcodes {
                 'sci-frontend-style',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/style.css',
                 array(),
-                '1.0.3' // Version incrémentée pour forcer le rechargement
+                '1.0.4' // Version incrémentée pour forcer le rechargement
             );
         }
         
@@ -183,7 +183,7 @@ class SCI_Shortcodes {
                 'sci-frontend-favoris',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
                 array(),
-                '1.0.3',
+                '1.0.4',
                 true
             );
         }
@@ -193,7 +193,7 @@ class SCI_Shortcodes {
                 'sci-frontend-lettre',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
                 array(),
-                '1.0.3',
+                '1.0.4',
                 true
             );
         }
@@ -203,7 +203,7 @@ class SCI_Shortcodes {
                 'sci-frontend-payment',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
                 array(),
-                '1.0.3',
+                '1.0.4',
                 true
             );
         }
@@ -211,9 +211,14 @@ class SCI_Shortcodes {
         // ✅ Localisation des variables AJAX (une seule fois)
         static $localized = false;
         if (!$localized) {
+            // ✅ NOUVEAU : Récupérer les SIRENs contactés pour l'utilisateur actuel
+            $campaign_manager = sci_campaign_manager();
+            $contacted_sirens = $campaign_manager->get_user_contacted_sirens();
+            
             wp_localize_script('sci-frontend-favoris', 'sci_ajax', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('sci_favoris_nonce')
+                'nonce' => wp_create_nonce('sci_favoris_nonce'),
+                'contacted_sirens' => $contacted_sirens // ✅ NOUVEAU : Liste des SIRENs contactés
             ));
             
             // ✅ Localisation pour le paiement avec URL dynamique des campagnes
@@ -420,6 +425,33 @@ class SCI_Shortcodes {
                 margin: 0;
             }
             
+            /* ✅ NOUVEAU : STYLES POUR LE STATUT DE CONTACT */
+            .contact-status {
+                display: inline-block;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
+            .contact-status.contacted {
+                background: #e8f5e8;
+                color: #2d5a2d;
+                border: 1px solid #c3e6c3;
+            }
+            
+            .contact-status.not-contacted {
+                background: #f8f9fa;
+                color: #6c757d;
+                border: 1px solid #dee2e6;
+            }
+            
+            .contact-status-icon {
+                margin-right: 4px;
+            }
+            
             @media (max-width: 768px) {
                 .sci-frontend-wrapper {
                     padding: 15px;
@@ -430,6 +462,10 @@ class SCI_Shortcodes {
                 .sci-frontend-wrapper .sci-table th,
                 .sci-frontend-wrapper .sci-table td {
                     padding: 8px;
+                }
+                .contact-status {
+                    font-size: 10px;
+                    padding: 2px 6px;
                 }
             }
             </style>
@@ -504,6 +540,7 @@ class SCI_Shortcodes {
                             <th>Adresse</th>
                             <th>Ville</th>
                             <th>Code Postal</th>
+                            <th>Statut</th> <!-- ✅ NOUVELLE COLONNE -->
                             <th>Sélection</th>
                         </tr>
                     </thead>
@@ -526,6 +563,13 @@ class SCI_Shortcodes {
                                 <td><?php echo esc_html($res['adresse']); ?></td>
                                 <td><?php echo esc_html($res['ville']); ?></td>
                                 <td><?php echo esc_html($res['code_postal']); ?></td>
+                                <td>
+                                    <!-- ✅ NOUVELLE CELLULE POUR LE STATUT DE CONTACT -->
+                                    <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>">
+                                        <span class="contact-status-icon">📧</span>
+                                        <span class="contact-status-text">Vérification...</span>
+                                    </span>
+                                </td>
                                 <td>
                                     <input type="checkbox" class="send-letter-checkbox"
                                         data-denomination="<?php echo esc_attr($res['denomination']); ?>"
@@ -574,7 +618,8 @@ class SCI_Shortcodes {
         if (typeof sci_ajax === 'undefined') {
             window.sci_ajax = {
                 ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                nonce: '<?php echo wp_create_nonce('sci_favoris_nonce'); ?>'
+                nonce: '<?php echo wp_create_nonce('sci_favoris_nonce'); ?>',
+                contacted_sirens: [] // ✅ NOUVEAU : Fallback pour les SIRENs contactés
             };
         }
         
@@ -584,7 +629,7 @@ class SCI_Shortcodes {
                 nonce: '<?php echo wp_create_nonce('sci_campaign_nonce'); ?>',
                 unit_price: <?php echo $woocommerce_integration->get_unit_price(); ?>,
                 woocommerce_ready: <?php echo $woocommerce_integration->is_woocommerce_ready() ? 'true' : 'false'; ?>,
-                campaigns_url: '<?php echo $this->_get_frontend_campaigns_url(); ?>' // ✅ UTILISATION DE LA NOUVELLE MÉTHODE
+                campaigns_url: '<?php echo $this->_get_frontend_campaigns_url(); ?>'
             };
         }
         
@@ -614,6 +659,10 @@ class SCI_Shortcodes {
                         loadedScripts++;
                         if (loadedScripts === scripts.length) {
                             console.log('✅ Tous les scripts SCI rechargés');
+                            // ✅ NOUVEAU : Mettre à jour le statut de contact après chargement
+                            if (typeof updateContactStatus === 'function') {
+                                updateContactStatus();
+                            }
                         }
                     };
                     script.onerror = function() {
@@ -621,6 +670,11 @@ class SCI_Shortcodes {
                     };
                     document.head.appendChild(script);
                 });
+            } else {
+                // ✅ NOUVEAU : Scripts déjà chargés, mettre à jour le statut immédiatement
+                if (typeof updateContactStatus === 'function') {
+                    updateContactStatus();
+                }
             }
         });
         </script>
