@@ -256,6 +256,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="recap-section">
                     <h3>📦 Services inclus</h3>
                     <div class="services-list">
+                        <div class="service-item">✅ Génération automatique des PDFs personnalisés</div>
                         <div class="service-item">✅ Suivi de la distribution</div>
                         <div class="service-item">✅ Historique complet dans vos campagnes</div>
                         <div class="service-item">✅ Support technique inclus</div>
@@ -352,7 +353,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="progress-bar">
                         <div class="progress-bar-fill" id="sending-progress"></div>
                     </div>
-                    <div id="sending-status">Génération des PDFs en cours...</div>
+                    <div id="sending-status">Préparation de l'envoi...</div>
                     <div class="success-actions">
                         <button id="view-campaigns" class="button button-primary">
                             📋 Voir mes campagnes
@@ -507,7 +508,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 900000);
     }
     
+    // ✅ VARIABLE GLOBALE POUR ÉVITER LES DOUBLONS
+    let paymentProcessed = false;
+    
     function handlePaymentSuccess(orderId) {
+        // ✅ VÉRIFICATION ANTI-DOUBLON
+        if (paymentProcessed) {
+            console.log('Paiement déjà traité, ignoré');
+            return;
+        }
+        paymentProcessed = true;
+        
         const checkoutContainer = document.getElementById('checkout-container');
         const successDiv = document.getElementById('payment-success');
         
@@ -518,8 +529,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // ✅ DÉSACTIVER LE MENU CONTEXTUEL SUR TOUTE LA PAGE
         disableContextMenu();
         
-        // Simuler le processus d'envoi
-        simulateSendingProcess();
+        // ✅ DÉMARRER LA PROGRESSION RÉALISTE
+        startRealisticSendingProgress(orderId);
         
         // Event listener pour le bouton "Voir mes campagnes"
         const viewCampaignsBtn = document.getElementById('view-campaigns');
@@ -527,6 +538,7 @@ document.addEventListener('DOMContentLoaded', function() {
             viewCampaignsBtn.addEventListener('click', function() {
                 // ✅ RÉACTIVER LE MENU CONTEXTUEL AVANT DE QUITTER
                 enableContextMenu();
+                paymentProcessed = false; // Reset pour la prochaine fois
                 
                 document.getElementById('letters-popup').style.display = 'none';
                 if (window.resetSciPopup) window.resetSciPopup();
@@ -535,10 +547,106 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
         
-        // ✅ PROGRAMMER LA RÉACTIVATION AUTOMATIQUE APRÈS 30 SECONDES
+        // ✅ PROGRAMMER LA RÉACTIVATION AUTOMATIQUE APRÈS 60 SECONDES
         setTimeout(() => {
             enableContextMenu();
-        }, 30000);
+            paymentProcessed = false; // Reset
+        }, 60000);
+    }
+    
+    // ✅ NOUVELLE FONCTION : PROGRESSION RÉALISTE BASÉE SUR LE NOMBRE DE LETTRES
+    function startRealisticSendingProgress(orderId) {
+        const progressBar = document.getElementById('sending-progress');
+        const statusDiv = document.getElementById('sending-status');
+        
+        if (!progressBar || !statusDiv) {
+            console.warn('Éléments de progression non trouvés');
+            return;
+        }
+        
+        // Récupérer le nombre de lettres depuis les données de campagne
+        const selectedEntries = window.getSelectedEntries ? window.getSelectedEntries() : [];
+        const totalLetters = selectedEntries.length;
+        
+        if (totalLetters === 0) {
+            statusDiv.textContent = 'Erreur : Aucune lettre à envoyer';
+            return;
+        }
+        
+        let currentLetter = 0;
+        let currentProgress = 0;
+        
+        // ✅ ÉTAPES INITIALES (20% du temps total)
+        const initialSteps = [
+            { progress: 5, text: 'Validation du paiement...', duration: 1000 },
+            { progress: 15, text: 'Génération des PDFs personnalisés...', duration: 2000 },
+            { progress: 25, text: 'Préparation des adresses destinataires...', duration: 1500 },
+            { progress: 35, text: 'Connexion à l\'API La Poste...', duration: 1000 }
+        ];
+        
+        let stepIndex = 0;
+        
+        function executeInitialSteps() {
+            if (stepIndex < initialSteps.length) {
+                const step = initialSteps[stepIndex];
+                animateProgress(progressBar, currentProgress, step.progress, 800);
+                statusDiv.textContent = step.text;
+                currentProgress = step.progress;
+                stepIndex++;
+                
+                setTimeout(executeInitialSteps, step.duration);
+            } else {
+                // Commencer l'envoi des lettres individuelles
+                startLetterSending();
+            }
+        }
+        
+        function startLetterSending() {
+            const letterProgressRange = 60; // 60% pour l'envoi des lettres (35% à 95%)
+            const progressPerLetter = letterProgressRange / totalLetters;
+            
+            function sendNextLetter() {
+                if (currentLetter < totalLetters) {
+                    currentLetter++;
+                    const letterProgress = 35 + (currentLetter * progressPerLetter);
+                    
+                    // Afficher le nom de la SCI si disponible
+                    let letterName = `lettre ${currentLetter}`;
+                    if (selectedEntries[currentLetter - 1] && selectedEntries[currentLetter - 1].denomination) {
+                        letterName = selectedEntries[currentLetter - 1].denomination;
+                    }
+                    
+                    animateProgress(progressBar, currentProgress, letterProgress, 1200);
+                    statusDiv.textContent = `📤 Envoi ${currentLetter}/${totalLetters} : ${letterName}`;
+                    currentProgress = letterProgress;
+                    
+                    // Temps d'attente réaliste entre les lettres (2-4 secondes)
+                    const waitTime = 2000 + Math.random() * 2000;
+                    setTimeout(sendNextLetter, waitTime);
+                } else {
+                    // Finalisation
+                    finalizeSending();
+                }
+            }
+            
+            sendNextLetter();
+        }
+        
+        function finalizeSending() {
+            // Étapes finales
+            setTimeout(() => {
+                animateProgress(progressBar, currentProgress, 98, 1000);
+                statusDiv.textContent = '✅ Finalisation de l\'envoi...';
+            }, 500);
+            
+            setTimeout(() => {
+                animateProgress(progressBar, 98, 100, 800);
+                statusDiv.textContent = `🎉 ${totalLetters} lettre${totalLetters > 1 ? 's' : ''} envoyée${totalLetters > 1 ? 's' : ''} avec succès !`;
+            }, 1500);
+        }
+        
+        // Démarrer le processus
+        executeInitialSteps();
     }
     
     // ✅ NOUVELLE FONCTION : DÉSACTIVER LE MENU CONTEXTUEL
@@ -655,39 +763,6 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         e.stopPropagation();
         return false;
-    }
-    
-    function simulateSendingProcess() {
-        const progressBar = document.getElementById('sending-progress');
-        const statusDiv = document.getElementById('sending-status');
-        
-        if (!progressBar || !statusDiv) {
-            console.warn('Éléments de progression non trouvés');
-            return;
-        }
-        
-        const steps = [
-            { progress: 15, text: 'Validation du paiement...' },
-            { progress: 30, text: 'Génération des PDFs personnalisés...' },
-            { progress: 50, text: 'Préparation des adresses destinataires...' },
-            { progress: 70, text: 'Connexion à l\'API La Poste...' },
-            { progress: 90, text: 'Envoi des lettres en cours...' },
-            { progress: 100, text: 'Campagne envoyée avec succès ! 🎉' }
-        ];
-        
-        let currentStep = 0;
-        
-        const stepInterval = setInterval(() => {
-            if (currentStep < steps.length) {
-                const step = steps[currentStep];
-                const currentProgress = progressBar.style.width.replace('%', '') || 0;
-                animateProgress(progressBar, currentProgress, step.progress, 1000);
-                statusDiv.textContent = step.text;
-                currentStep++;
-            } else {
-                clearInterval(stepInterval);
-            }
-        }, 1800);
     }
     
     function showContentStep(title, content) {
