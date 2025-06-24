@@ -130,7 +130,7 @@ Cordialement,
             <p style="color: #666; margin-bottom: 20px;">Rédigez le titre et le contenu de votre courriel</p>
             
             <label for="campaign-title"><strong>Titre de la campagne :</strong></label><br>
-            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'acquisition SCI" value="Contact SCI - Opportunité d'acquisition"><br>
+            <input type="text" id="campaign-title" style="width:100%; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Ex: Proposition d'acquisition SCI" value="Campagne 01"><br>
 
             <label for="campaign-content"><strong>Contenu du courriel :</strong></label><br>
             <textarea id="campaign-content" style="width:100%; height:200px; margin-bottom:20px; padding:10px; border:1px solid #ddd; border-radius:4px;" required placeholder="Rédigez votre message...">${defaultEmailContent}</textarea>
