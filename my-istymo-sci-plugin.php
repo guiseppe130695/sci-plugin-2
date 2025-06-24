@@ -107,15 +107,28 @@ function sci_afficher_panel() {
         echo '</div>';
     }
 
-    // ✅ NOUVEAU : Affichage des shortcodes disponibles
+    // ✅ NOUVEAU : Affichage des shortcodes disponibles avec URLs configurées
     echo '<div class="notice notice-info">';
     echo '<h4>📋 Shortcodes disponibles pour vos pages/articles :</h4>';
     echo '<ul>';
-    echo '<li><code>[sci_panel]</code> - Panneau de recherche SCI complet</li>';
-    echo '<li><code>[sci_favoris]</code> - Liste des SCI favoris</li>';
-    echo '<li><code>[sci_campaigns]</code> - Liste des campagnes de lettres</li>';
+    echo '<li><code>[sci_panel]</code> - Panneau de recherche SCI complet';
+    if ($config_manager->get_sci_panel_page_url()) {
+        echo ' <small>(<a href="' . esc_url($config_manager->get_sci_panel_page_url()) . '" target="_blank">Voir la page</a>)</small>';
+    }
+    echo '</li>';
+    echo '<li><code>[sci_favoris]</code> - Liste des SCI favoris';
+    if ($config_manager->get_sci_favoris_page_url()) {
+        echo ' <small>(<a href="' . esc_url($config_manager->get_sci_favoris_page_url()) . '" target="_blank">Voir la page</a>)</small>';
+    }
+    echo '</li>';
+    echo '<li><code>[sci_campaigns]</code> - Liste des campagnes de lettres';
+    if ($config_manager->get_sci_campaigns_page_url()) {
+        echo ' <small>(<a href="' . esc_url($config_manager->get_sci_campaigns_page_url()) . '" target="_blank">Voir la page</a>)</small>';
+    }
+    echo '</li>';
     echo '</ul>';
     echo '<p><small>Copiez-collez ces shortcodes dans vos pages ou articles pour afficher les fonctionnalités SCI sur votre site.</small></p>';
+    echo '<p><small>💡 <strong>Astuce :</strong> Configurez les URLs de vos pages dans <a href="' . admin_url('admin.php?page=sci-config') . '">Configuration</a> pour des redirections automatiques.</small></p>';
     echo '</div>';
 
     // Si un formulaire POST a été envoyé avec un code postal sélectionné
@@ -383,14 +396,15 @@ function sci_enqueue_admin_scripts() {
         'contacted_sirens' => $contacted_sirens // ✅ NOUVEAU : Liste des SIRENs contactés
     ));
 
-    // Localisation pour le paiement
+    // Localisation pour le paiement - UTILISE L'URL STOCKÉE
     $woocommerce_integration = sci_woocommerce();
+    $config_manager = sci_config_manager();
     wp_localize_script('sci-payment-js', 'sciPaymentData', array(
         'ajax_url' => admin_url('admin-ajax.php'),
         'nonce' => wp_create_nonce('sci_campaign_nonce'),
         'unit_price' => $woocommerce_integration->get_unit_price(),
         'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready(),
-        'campaigns_url' => admin_url('admin.php?page=sci-campaigns')
+        'campaigns_url' => $config_manager->get_sci_campaigns_page_url() // ✅ MODIFIÉ : Utilise l'URL stockée
     ));
 
     // Localisation pour lettre.js (ajaxurl)

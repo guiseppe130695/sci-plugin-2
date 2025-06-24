@@ -68,6 +68,19 @@ class SCI_Config_Manager {
             $sanitized['inpi_api_url'] = esc_url_raw($input['inpi_api_url']);
         }
         
+        // ✅ NOUVEAU : URLs des pages shortcodes
+        if (isset($input['sci_panel_page_url'])) {
+            $sanitized['sci_panel_page_url'] = esc_url_raw($input['sci_panel_page_url']);
+        }
+        
+        if (isset($input['sci_favoris_page_url'])) {
+            $sanitized['sci_favoris_page_url'] = esc_url_raw($input['sci_favoris_page_url']);
+        }
+        
+        if (isset($input['sci_campaigns_page_url'])) {
+            $sanitized['sci_campaigns_page_url'] = esc_url_raw($input['sci_campaigns_page_url']);
+        }
+        
         // Paramètres La Poste - Validation des énumérations
         $valid_affranchissement = ['lrar', 'lr', 'prioritaire', 'suivi', 'verte', 'vertesuivi', 'ecopli', 'performance', 'perfsuivi'];
         if (isset($input['laposte_type_affranchissement']) && in_array($input['laposte_type_affranchissement'], $valid_affranchissement)) {
@@ -153,6 +166,56 @@ class SCI_Config_Manager {
                 settings_fields('sci_api_settings');
                 do_settings_sections('sci_api_settings');
                 ?>
+                
+                <!-- ✅ NOUVELLE SECTION : URLs des pages shortcodes -->
+                <h2>🔗 URLs des pages shortcodes</h2>
+                <p>Configurez les liens vers vos pages contenant les shortcodes SCI. Ces URLs seront utilisées pour les redirections et liens internes.</p>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="sci_panel_page_url">Page principale SCI ([sci_panel])</label>
+                        </th>
+                        <td>
+                            <input type="url" 
+                                   id="sci_panel_page_url" 
+                                   name="<?php echo $this->config_option_name; ?>[sci_panel_page_url]" 
+                                   value="<?php echo esc_attr($config['sci_panel_page_url'] ?? ''); ?>" 
+                                   class="regular-text" 
+                                   placeholder="https://monsite.com/sci-recherche" />
+                            <p class="description">URL complète de la page contenant le shortcode [sci_panel]</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row">
+                            <label for="sci_favoris_page_url">Page des favoris ([sci_favoris])</label>
+                        </th>
+                        <td>
+                            <input type="url" 
+                                   id="sci_favoris_page_url" 
+                                   name="<?php echo $this->config_option_name; ?>[sci_favoris_page_url]" 
+                                   value="<?php echo esc_attr($config['sci_favoris_page_url'] ?? ''); ?>" 
+                                   class="regular-text" 
+                                   placeholder="https://monsite.com/mes-favoris" />
+                            <p class="description">URL complète de la page contenant le shortcode [sci_favoris]</p>
+                        </td>
+                    </tr>
+                    
+                    <tr>
+                        <th scope="row">
+                            <label for="sci_campaigns_page_url">Page des campagnes ([sci_campaigns])</label>
+                        </th>
+                        <td>
+                            <input type="url" 
+                                   id="sci_campaigns_page_url" 
+                                   name="<?php echo $this->config_option_name; ?>[sci_campaigns_page_url]" 
+                                   value="<?php echo esc_attr($config['sci_campaigns_page_url'] ?? ''); ?>" 
+                                   class="regular-text" 
+                                   placeholder="https://monsite.com/mes-campagnes" />
+                            <p class="description">URL complète de la page contenant le shortcode [sci_campaigns]</p>
+                        </td>
+                    </tr>
+                </table>
                 
                 <!-- Section API Tokens -->
                 <h2>🔑 Tokens API</h2>
@@ -532,6 +595,17 @@ class SCI_Config_Manager {
                     <li>L'accusé de réception dématérialisé n'est disponible qu'avec LRAR vers la France</li>
                 </ul>
             </div>
+            
+            <!-- ✅ NOUVELLE SECTION : Aide pour les URLs shortcodes -->
+            <div class="notice notice-success">
+                <p><strong>🔗 Configuration des URLs shortcodes :</strong></p>
+                <ul>
+                    <li>Créez vos pages avec les shortcodes : <code>[sci_panel]</code>, <code>[sci_favoris]</code>, <code>[sci_campaigns]</code></li>
+                    <li>Copiez les URLs complètes de ces pages dans les champs ci-dessus</li>
+                    <li>Ces URLs seront utilisées pour les redirections automatiques et les liens internes</li>
+                    <li>Vous pouvez modifier ces URLs à tout moment sans affecter le code</li>
+                </ul>
+            </div>
         </div>
         
         <script>
@@ -615,6 +689,11 @@ class SCI_Config_Manager {
             'laposte_token' => '',
             'laposte_api_url' => 'https://sandbox-api.servicepostal.com/lettres',
             
+            // ✅ NOUVEAU : URLs par défaut pour les shortcodes
+            'sci_panel_page_url' => '',
+            'sci_favoris_page_url' => '',
+            'sci_campaigns_page_url' => '',
+            
             // Paramètres La Poste avec valeurs par défaut
             'laposte_type_affranchissement' => 'lrar',
             'laposte_type_enveloppe' => 'auto',
@@ -678,6 +757,32 @@ class SCI_Config_Manager {
      */
     public function get_laposte_api_url() {
         return $this->get('laposte_api_url');
+    }
+    
+    // ✅ NOUVELLES MÉTHODES : URLs des pages shortcodes
+    
+    /**
+     * Récupère l'URL de la page principale SCI
+     */
+    public function get_sci_panel_page_url() {
+        $url = $this->get('sci_panel_page_url');
+        return !empty($url) ? $url : home_url('/sci-recherche');
+    }
+    
+    /**
+     * Récupère l'URL de la page des favoris
+     */
+    public function get_sci_favoris_page_url() {
+        $url = $this->get('sci_favoris_page_url');
+        return !empty($url) ? $url : home_url('/mes-favoris');
+    }
+    
+    /**
+     * Récupère l'URL de la page des campagnes
+     */
+    public function get_sci_campaigns_page_url() {
+        $url = $this->get('sci_campaigns_page_url');
+        return !empty($url) ? $url : home_url('/mes-campagnes');
     }
     
     // === MÉTHODES POUR LES PARAMÈTRES LA POSTE ===

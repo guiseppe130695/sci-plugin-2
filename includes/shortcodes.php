@@ -111,7 +111,7 @@ class SCI_Shortcodes {
                 'sci-frontend-style',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/style.css',
                 array(),
-                '1.0.1' // Version incrémentée pour forcer le rechargement
+                '1.0.2' // Version incrémentée pour forcer le rechargement
             );
         }
         
@@ -121,7 +121,7 @@ class SCI_Shortcodes {
                 'sci-frontend-favoris',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
                 array(),
-                '1.0.1',
+                '1.0.2',
                 true
             );
         }
@@ -131,7 +131,7 @@ class SCI_Shortcodes {
                 'sci-frontend-lettre',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
                 array(),
-                '1.0.1',
+                '1.0.2',
                 true
             );
         }
@@ -141,7 +141,7 @@ class SCI_Shortcodes {
                 'sci-frontend-payment',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
                 array(),
-                '1.0.1',
+                '1.0.2',
                 true
             );
         }
@@ -159,14 +159,15 @@ class SCI_Shortcodes {
                 'contacted_sirens' => $contacted_sirens // ✅ NOUVEAU : Liste des SIRENs contactés
             ));
             
-            // ✅ Localisation pour le paiement
+            // ✅ Localisation pour le paiement - UTILISE L'URL STOCKÉE
             $woocommerce_integration = sci_woocommerce();
+            $config_manager = sci_config_manager();
             wp_localize_script('sci-frontend-payment', 'sciPaymentData', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('sci_campaign_nonce'),
                 'unit_price' => $woocommerce_integration->get_unit_price(),
                 'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready(),
-                'campaigns_url' => get_permalink() . '?sci_view=campaigns'
+                'campaigns_url' => $config_manager->get_sci_campaigns_page_url() // ✅ MODIFIÉ : Utilise l'URL stockée
             ));
             
             // ✅ Localisation pour lettre.js
@@ -577,7 +578,7 @@ class SCI_Shortcodes {
                 nonce: '<?php echo wp_create_nonce('sci_campaign_nonce'); ?>',
                 unit_price: <?php echo $woocommerce_integration->get_unit_price(); ?>,
                 woocommerce_ready: <?php echo $woocommerce_integration->is_woocommerce_ready() ? 'true' : 'false'; ?>,
-                campaigns_url: '<?php echo get_permalink() . '?sci_view=campaigns'; ?>'
+                campaigns_url: '<?php echo $config_manager->get_sci_campaigns_page_url(); ?>' // ✅ MODIFIÉ : Utilise l'URL stockée
             };
         }
         
@@ -812,6 +813,7 @@ class SCI_Shortcodes {
         }
         
         $campaign_manager = sci_campaign_manager();
+        $config_manager = sci_config_manager();
         
         // Gestion de l'affichage des détails d'une campagne
         if (isset($_GET['sci_view']) && $_GET['sci_view'] === 'campaign' && isset($_GET['id']) && is_numeric($_GET['id'])) {
@@ -961,6 +963,8 @@ class SCI_Shortcodes {
      * Affichage des détails d'une campagne pour le frontend
      */
     private function display_campaign_details_frontend($campaign, $atts) {
+        $config_manager = sci_config_manager();
+        
         ob_start();
         ?>
         <div class="sci-frontend-wrapper">
@@ -1027,7 +1031,7 @@ class SCI_Shortcodes {
             
             <h1>📬 Détails de la campagne : <?php echo esc_html($campaign['title']); ?></h1>
             
-            <a href="<?php echo remove_query_arg(array('sci_view', 'id')); ?>" class="sci-button">
+            <a href="<?php echo $config_manager->get_sci_campaigns_page_url(); ?>" class="sci-button">
                 ← Retour aux campagnes
             </a>
             
