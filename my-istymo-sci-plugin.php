@@ -201,10 +201,10 @@ function sci_afficher_panel() {
                             <td><?php echo esc_html($res['ville']); ?></td>
                             <td><?php echo esc_html($res['code_postal']); ?></td>
                             <td>
-                                <!-- ✅ NOUVELLE CELLULE POUR LE STATUT DE CONTACT -->
-                                <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>">
-                                    <span class="contact-status-icon">📧</span>
-                                    <span class="contact-status-text">Vérification...</span>
+                                <!-- ✅ CELLULE POUR LE STATUT DE CONTACT - VIDE PAR DÉFAUT -->
+                                <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>" style="display: none;">
+                                    <span class="contact-status-icon"></span>
+                                    <span class="contact-status-text"></span>
                                 </span>
                             </td>
                             <td>

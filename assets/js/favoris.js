@@ -47,17 +47,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const isContacted = contactedSirens.includes(siren);
             
             if (isContacted) {
-                // SCI déjà contactée
+                // SCI déjà contactée - Afficher le badge
                 statusElement.className = 'contact-status contacted';
+                statusElement.style.display = 'inline-block';
                 iconElement.textContent = '✅';
                 textElement.textContent = 'Contacté';
                 statusElement.title = 'Cette SCI a déjà été contactée dans une campagne précédente';
             } else {
-                // SCI non contactée
-                statusElement.className = 'contact-status not-contacted';
-                iconElement.textContent = '📧';
-                textElement.textContent = 'Nouveau';
-                statusElement.title = 'Cette SCI n\'a jamais été contactée';
+                // SCI non contactée - Masquer complètement le badge
+                statusElement.style.display = 'none';
+                statusElement.title = '';
             }
         });
 

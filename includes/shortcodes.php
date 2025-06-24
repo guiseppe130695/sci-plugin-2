@@ -12,7 +12,7 @@ class SCI_Shortcodes {
         add_shortcode('sci_favoris', array($this, 'sci_favoris_shortcode'));
         add_shortcode('sci_campaigns', array($this, 'sci_campaigns_shortcode'));
         
-        // ✅ FORCER LE CHARGEMENT DES SCRIPTS SUR TOUTES LES PAGES AVEC SHORTCODES
+        // ✅ NOUVEAU : Forcer le chargement des scripts sur toutes les pages avec shortcodes
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'), 5);
         add_action('wp_head', array($this, 'force_enqueue_on_shortcode_pages'), 1);
         add_action('wp_footer', array($this, 'ensure_scripts_loaded'), 999);
@@ -23,70 +23,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ NOUVELLE MÉTHODE : Trouve l'URL de la page contenant le shortcode [sci_campaigns]
-     */
-    private function _get_frontend_campaigns_url() {
-        // Cache statique pour la requête actuelle
-        static $campaigns_url = null;
-        
-        if ($campaigns_url !== null) {
-            return $campaigns_url;
-        }
-        
-        // Vérifier le cache WordPress (transient) - valide 1 heure
-        $cached_url = get_transient('sci_campaigns_page_url');
-        if ($cached_url !== false) {
-            $campaigns_url = $cached_url;
-            return $campaigns_url;
-        }
-        
-        // Rechercher la page contenant le shortcode [sci_campaigns]
-        global $wpdb;
-        
-        $page_id = $wpdb->get_var($wpdb->prepare(
-            "SELECT ID FROM {$wpdb->posts} 
-             WHERE post_type = 'page' 
-             AND post_status = 'publish' 
-             AND post_content LIKE %s 
-             LIMIT 1",
-            '%[sci_campaigns%'
-        ));
-        
-        if ($page_id) {
-            $campaigns_url = get_permalink($page_id);
-            
-            // Mettre en cache pour 1 heure
-            set_transient('sci_campaigns_page_url', $campaigns_url, HOUR_IN_SECONDS);
-            
-            return $campaigns_url;
-        }
-        
-        // Fallback : essayer de trouver une page avec "campagne" dans le titre ou slug
-        $fallback_page = $wpdb->get_var($wpdb->prepare(
-            "SELECT ID FROM {$wpdb->posts} 
-             WHERE post_type = 'page' 
-             AND post_status = 'publish' 
-             AND (post_title LIKE %s OR post_name LIKE %s)
-             LIMIT 1",
-            '%campagne%',
-            '%campagne%'
-        ));
-        
-        if ($fallback_page) {
-            $campaigns_url = get_permalink($fallback_page);
-            set_transient('sci_campaigns_page_url', $campaigns_url, HOUR_IN_SECONDS);
-            return $campaigns_url;
-        }
-        
-        // Dernier fallback : page actuelle avec paramètre
-        $campaigns_url = home_url('/?sci_view=campaigns');
-        
-        // Ne pas mettre en cache le fallback pour permettre une nouvelle recherche
-        return $campaigns_url;
-    }
-    
-    /**
-     * ✅ Force le chargement sur les pages avec shortcodes
+     * ✅ NOUVEAU : Force le chargement sur les pages avec shortcodes
      */
     public function force_enqueue_on_shortcode_pages() {
         global $post;
@@ -103,7 +40,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ S'assurer que les scripts sont chargés en footer
+     * ✅ NOUVEAU : S'assurer que les scripts sont chargés en footer
      */
     public function ensure_scripts_loaded() {
         global $post;
@@ -121,7 +58,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ Enqueue les scripts pour le frontend avec détection renforcée
+     * ✅ AMÉLIORÉ : Enqueue les scripts pour le frontend avec détection renforcée
      */
     public function enqueue_frontend_scripts() {
         global $post;
@@ -153,7 +90,8 @@ class SCI_Shortcodes {
             is_home()
         )) {
             // Vérifier le contenu de la page actuelle
-            if ($post && strpos($post->post_content, '[sci_') !== false) {
+            $content = get_the_content();
+            if (strpos($content, '[sci_') !== false) {
                 $should_load = true;
             }
         }
@@ -164,7 +102,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * ✅ Force le chargement des assets
+     * ✅ NOUVEAU : Force le chargement des assets
      */
     private function force_enqueue_assets() {
         // ✅ CSS en premier
@@ -173,7 +111,7 @@ class SCI_Shortcodes {
                 'sci-frontend-style',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/style.css',
                 array(),
-                '1.0.4' // Version incrémentée pour forcer le rechargement
+                '1.0.1' // Version incrémentée pour forcer le rechargement
             );
         }
         
@@ -183,7 +121,7 @@ class SCI_Shortcodes {
                 'sci-frontend-favoris',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
                 array(),
-                '1.0.4',
+                '1.0.1',
                 true
             );
         }
@@ -193,7 +131,7 @@ class SCI_Shortcodes {
                 'sci-frontend-lettre',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
                 array(),
-                '1.0.4',
+                '1.0.1',
                 true
             );
         }
@@ -203,7 +141,7 @@ class SCI_Shortcodes {
                 'sci-frontend-payment',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
                 array(),
-                '1.0.4',
+                '1.0.1',
                 true
             );
         }
@@ -211,7 +149,7 @@ class SCI_Shortcodes {
         // ✅ Localisation des variables AJAX (une seule fois)
         static $localized = false;
         if (!$localized) {
-            // ✅ NOUVEAU : Récupérer les SIRENs contactés pour l'utilisateur actuel
+            // ✅ NOUVEAU : Récupérer les SIRENs contactés pour le frontend
             $campaign_manager = sci_campaign_manager();
             $contacted_sirens = $campaign_manager->get_user_contacted_sirens();
             
@@ -221,14 +159,14 @@ class SCI_Shortcodes {
                 'contacted_sirens' => $contacted_sirens // ✅ NOUVEAU : Liste des SIRENs contactés
             ));
             
-            // ✅ Localisation pour le paiement avec URL dynamique des campagnes
+            // ✅ Localisation pour le paiement
             $woocommerce_integration = sci_woocommerce();
             wp_localize_script('sci-frontend-payment', 'sciPaymentData', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('sci_campaign_nonce'),
                 'unit_price' => $woocommerce_integration->get_unit_price(),
                 'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready(),
-                'campaigns_url' => $this->_get_frontend_campaigns_url() // ✅ UTILISATION DE LA NOUVELLE MÉTHODE
+                'campaigns_url' => get_permalink() . '?sci_view=campaigns'
             ));
             
             // ✅ Localisation pour lettre.js
@@ -425,7 +363,7 @@ class SCI_Shortcodes {
                 margin: 0;
             }
             
-            /* ✅ NOUVEAU : STYLES POUR LE STATUT DE CONTACT */
+            /* ✅ STYLES POUR LE STATUT DE CONTACT */
             .contact-status {
                 display: inline-block;
                 padding: 4px 8px;
@@ -434,6 +372,7 @@ class SCI_Shortcodes {
                 font-weight: 600;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+                transition: all 0.3s ease;
             }
             
             .contact-status.contacted {
@@ -442,14 +381,13 @@ class SCI_Shortcodes {
                 border: 1px solid #c3e6c3;
             }
             
-            .contact-status.not-contacted {
-                background: #f8f9fa;
-                color: #6c757d;
-                border: 1px solid #dee2e6;
-            }
-            
             .contact-status-icon {
                 margin-right: 4px;
+                font-size: 12px;
+            }
+            
+            .contact-status-text {
+                font-size: 10px;
             }
             
             @media (max-width: 768px) {
@@ -463,9 +401,19 @@ class SCI_Shortcodes {
                 .sci-frontend-wrapper .sci-table td {
                     padding: 8px;
                 }
+                
                 .contact-status {
                     font-size: 10px;
                     padding: 2px 6px;
+                }
+                
+                .contact-status-icon {
+                    margin-right: 2px;
+                    font-size: 10px;
+                }
+                
+                .contact-status-text {
+                    font-size: 9px;
                 }
             }
             </style>
@@ -564,10 +512,10 @@ class SCI_Shortcodes {
                                 <td><?php echo esc_html($res['ville']); ?></td>
                                 <td><?php echo esc_html($res['code_postal']); ?></td>
                                 <td>
-                                    <!-- ✅ NOUVELLE CELLULE POUR LE STATUT DE CONTACT -->
-                                    <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>">
-                                        <span class="contact-status-icon">📧</span>
-                                        <span class="contact-status-text">Vérification...</span>
+                                    <!-- ✅ CELLULE POUR LE STATUT DE CONTACT - VIDE PAR DÉFAUT -->
+                                    <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>" style="display: none;">
+                                        <span class="contact-status-icon"></span>
+                                        <span class="contact-status-text"></span>
                                     </span>
                                 </td>
                                 <td>
@@ -619,7 +567,7 @@ class SCI_Shortcodes {
             window.sci_ajax = {
                 ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
                 nonce: '<?php echo wp_create_nonce('sci_favoris_nonce'); ?>',
-                contacted_sirens: [] // ✅ NOUVEAU : Fallback pour les SIRENs contactés
+                contacted_sirens: <?php echo json_encode($campaign_manager->get_user_contacted_sirens()); ?>
             };
         }
         
@@ -629,7 +577,7 @@ class SCI_Shortcodes {
                 nonce: '<?php echo wp_create_nonce('sci_campaign_nonce'); ?>',
                 unit_price: <?php echo $woocommerce_integration->get_unit_price(); ?>,
                 woocommerce_ready: <?php echo $woocommerce_integration->is_woocommerce_ready() ? 'true' : 'false'; ?>,
-                campaigns_url: '<?php echo $this->_get_frontend_campaigns_url(); ?>'
+                campaigns_url: '<?php echo get_permalink() . '?sci_view=campaigns'; ?>'
             };
         }
         
@@ -637,44 +585,25 @@ class SCI_Shortcodes {
             window.ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
         }
         
-        // ✅ FORCER LE RECHARGEMENT DES SCRIPTS SI NÉCESSAIRE
+        // Forcer le rechargement des scripts si nécessaire
         document.addEventListener('DOMContentLoaded', function() {
             // Vérifier si les fonctions principales existent
             if (typeof updateSelectedCount === 'undefined' || typeof window.getSelectedEntries === 'undefined') {
                 console.log('Scripts SCI non chargés, tentative de rechargement...');
                 
-                // Charger les scripts manuellement avec cache busting
+                // Charger les scripts manuellement
                 const scripts = [
                     '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js'; ?>',
                     '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js'; ?>',
                     '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js'; ?>'
                 ];
                 
-                let loadedScripts = 0;
                 scripts.forEach(function(src) {
                     const script = document.createElement('script');
                     script.src = src + '?v=' + Date.now();
                     script.async = false;
-                    script.onload = function() {
-                        loadedScripts++;
-                        if (loadedScripts === scripts.length) {
-                            console.log('✅ Tous les scripts SCI rechargés');
-                            // ✅ NOUVEAU : Mettre à jour le statut de contact après chargement
-                            if (typeof updateContactStatus === 'function') {
-                                updateContactStatus();
-                            }
-                        }
-                    };
-                    script.onerror = function() {
-                        console.error('❌ Erreur chargement script:', src);
-                    };
                     document.head.appendChild(script);
                 });
-            } else {
-                // ✅ NOUVEAU : Scripts déjà chargés, mettre à jour le statut immédiatement
-                if (typeof updateContactStatus === 'function') {
-                    updateContactStatus();
-                }
             }
         });
         </script>
