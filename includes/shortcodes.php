@@ -23,6 +23,69 @@ class SCI_Shortcodes {
     }
     
     /**
+     * ✅ NOUVELLE MÉTHODE : Trouve l'URL de la page contenant le shortcode [sci_campaigns]
+     */
+    private function _get_frontend_campaigns_url() {
+        // Cache statique pour la requête actuelle
+        static $campaigns_url = null;
+        
+        if ($campaigns_url !== null) {
+            return $campaigns_url;
+        }
+        
+        // Vérifier le cache WordPress (transient) - valide 1 heure
+        $cached_url = get_transient('sci_campaigns_page_url');
+        if ($cached_url !== false) {
+            $campaigns_url = $cached_url;
+            return $campaigns_url;
+        }
+        
+        // Rechercher la page contenant le shortcode [sci_campaigns]
+        global $wpdb;
+        
+        $page_id = $wpdb->get_var($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} 
+             WHERE post_type = 'page' 
+             AND post_status = 'publish' 
+             AND post_content LIKE %s 
+             LIMIT 1",
+            '%[sci_campaigns%'
+        ));
+        
+        if ($page_id) {
+            $campaigns_url = get_permalink($page_id);
+            
+            // Mettre en cache pour 1 heure
+            set_transient('sci_campaigns_page_url', $campaigns_url, HOUR_IN_SECONDS);
+            
+            return $campaigns_url;
+        }
+        
+        // Fallback : essayer de trouver une page avec "campagne" dans le titre ou slug
+        $fallback_page = $wpdb->get_var($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} 
+             WHERE post_type = 'page' 
+             AND post_status = 'publish' 
+             AND (post_title LIKE %s OR post_name LIKE %s)
+             LIMIT 1",
+            '%campagne%',
+            '%campagne%'
+        ));
+        
+        if ($fallback_page) {
+            $campaigns_url = get_permalink($fallback_page);
+            set_transient('sci_campaigns_page_url', $campaigns_url, HOUR_IN_SECONDS);
+            return $campaigns_url;
+        }
+        
+        // Dernier fallback : page actuelle avec paramètre
+        $campaigns_url = home_url('/?sci_view=campaigns');
+        
+        // Ne pas mettre en cache le fallback pour permettre une nouvelle recherche
+        return $campaigns_url;
+    }
+    
+    /**
      * ✅ Force le chargement sur les pages avec shortcodes
      */
     public function force_enqueue_on_shortcode_pages() {
@@ -110,7 +173,7 @@ class SCI_Shortcodes {
                 'sci-frontend-style',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/style.css',
                 array(),
-                '1.0.2' // Version incrémentée pour forcer le rechargement
+                '1.0.3' // Version incrémentée pour forcer le rechargement
             );
         }
         
@@ -120,7 +183,7 @@ class SCI_Shortcodes {
                 'sci-frontend-favoris',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
                 array(),
-                '1.0.2',
+                '1.0.3',
                 true
             );
         }
@@ -130,7 +193,7 @@ class SCI_Shortcodes {
                 'sci-frontend-lettre',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
                 array(),
-                '1.0.2',
+                '1.0.3',
                 true
             );
         }
@@ -140,7 +203,7 @@ class SCI_Shortcodes {
                 'sci-frontend-payment',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
                 array(),
-                '1.0.2',
+                '1.0.3',
                 true
             );
         }
@@ -153,14 +216,14 @@ class SCI_Shortcodes {
                 'nonce' => wp_create_nonce('sci_favoris_nonce')
             ));
             
-            // ✅ Localisation pour le paiement
+            // ✅ Localisation pour le paiement avec URL dynamique des campagnes
             $woocommerce_integration = sci_woocommerce();
             wp_localize_script('sci-frontend-payment', 'sciPaymentData', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('sci_campaign_nonce'),
                 'unit_price' => $woocommerce_integration->get_unit_price(),
                 'woocommerce_ready' => $woocommerce_integration->is_woocommerce_ready(),
-                'campaigns_url' => get_permalink() . '?sci_view=campaigns'
+                'campaigns_url' => $this->_get_frontend_campaigns_url() // ✅ UTILISATION DE LA NOUVELLE MÉTHODE
             ));
             
             // ✅ Localisation pour lettre.js
@@ -521,7 +584,7 @@ class SCI_Shortcodes {
                 nonce: '<?php echo wp_create_nonce('sci_campaign_nonce'); ?>',
                 unit_price: <?php echo $woocommerce_integration->get_unit_price(); ?>,
                 woocommerce_ready: <?php echo $woocommerce_integration->is_woocommerce_ready() ? 'true' : 'false'; ?>,
-                campaigns_url: '<?php echo get_permalink() . '?sci_view=campaigns'; ?>'
+                campaigns_url: '<?php echo $this->_get_frontend_campaigns_url(); ?>' // ✅ UTILISATION DE LA NOUVELLE MÉTHODE
             };
         }
         
