@@ -705,7 +705,7 @@ function sci_favoris_page() {
                     <th>Adresse</th>
                     <th>Ville</th>
                     <th>Code Postal</th>
-                    <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
+                    <th>Géolocalisation</th> <!-- ✅ NOUVELLE COLONNE -->
                     <th>Action</th>
                 </tr>
             </thead>
@@ -733,7 +733,7 @@ function sci_favoris_page() {
                                    target="_blank" 
                                    class="maps-link"
                                    title="Localiser <?php echo esc_attr($fav['denomination']); ?> sur Google Maps">
-                                    📍 Maps
+                                    Localiser SCI
                                 </a>
                             </td>
                             <td>
