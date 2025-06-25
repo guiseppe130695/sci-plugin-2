@@ -14,8 +14,8 @@ require_once plugin_dir_path(__FILE__) . 'includes/favoris-handler.php';
 require_once plugin_dir_path(__FILE__) . 'includes/config-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/campaign-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/woocommerce-integration.php';
-require_once plugin_dir_path(__FILE__) . 'includes/shortcodes.php';
-require_once plugin_dir_path(__FILE__) . 'includes/inpi-token-manager.php';
+require_once plugin_dir_path(__FILE__) . 'includes/shortcodes.php'; // ✅ NOUVEAU
+require_once plugin_dir_path(__FILE__) . 'includes/inpi-token-manager.php'; // ✅ NOUVEAU
 
 
 // --- Ajout du menu SCI dans l'admin WordPress ---
@@ -77,27 +77,12 @@ function sci_afficher_panel() {
         $codesPostauxArray = explode(';', $codePostal);
     }
 
+    $resultats = []; // Initialise un tableau vide pour les résultats
+
     // Vérifier si la configuration API est complète
     $config_manager = sci_config_manager();
     if (!$config_manager->is_configured()) {
         echo '<div class="notice notice-error"><p><strong>⚠️ Configuration manquante :</strong> Veuillez configurer vos tokens API dans <a href="' . admin_url('admin.php?page=sci-config') . '">Configuration</a>.</p></div>';
-    }
-
-    // ✅ NOUVEAU : Vérifier la configuration INPI
-    $inpi_token_manager = sci_inpi_token_manager();
-    $username = get_option('sci_inpi_username');
-    $password = get_option('sci_inpi_password');
-    
-    if (!$username || !$password) {
-        echo '<div class="notice notice-warning"><p><strong>⚠️ Identifiants INPI manquants :</strong> Veuillez configurer vos identifiants INPI dans <a href="' . admin_url('admin.php?page=sci-inpi-credentials') . '">Identifiants INPI</a> pour la génération automatique de tokens.</p></div>';
-    } else {
-        // Vérifier le statut du token
-        $token_valid = $inpi_token_manager->check_token_validity(false);
-        if (!$token_valid) {
-            echo '<div class="notice notice-info"><p><strong>ℹ️ Token INPI :</strong> Le token sera généré automatiquement lors de votre première recherche. <a href="' . admin_url('admin.php?page=sci-inpi-credentials') . '">Gérer les tokens</a></p></div>';
-        } else {
-            echo '<div class="notice notice-success"><p><strong>✅ Token INPI :</strong> Token valide et prêt à l\'utilisation. <a href="' . admin_url('admin.php?page=sci-inpi-credentials') . '">Gérer les tokens</a></p></div>';
-        }
     }
 
     // Vérifier WooCommerce
@@ -147,509 +132,352 @@ function sci_afficher_panel() {
     echo '<p><small>💡 <strong>Astuce :</strong> Configurez les URLs de vos pages dans <a href="' . admin_url('admin.php?page=sci-config') . '">Configuration</a> pour des redirections automatiques.</small></p>';
     echo '</div>';
 
-    // ✅ NOUVEAU : Interface avec pagination AJAX
+    // ✅ NOUVEAU : Gestion de la pagination
+    $page = isset($_GET['sci_page']) ? max(1, intval($_GET['sci_page'])) : 1;
+    $per_page = isset($_GET['sci_per_page']) ? max(25, min(100, intval($_GET['sci_per_page']))) : 25;
+
+    // Si un formulaire POST a été envoyé avec un code postal sélectionné
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['codePostal'])) {
+        error_log('POST reçu: ' . print_r($_POST, true));
+
+        $postal_code = sanitize_text_field($_POST['codePostal']);
+        $resultats = sci_fetch_inpi_data($postal_code, $page, $per_page);
+
+        // Vérification si $resultats est une erreur
+        if (is_wp_error($resultats)) {
+            echo '<div class="notice notice-error"><p>Erreur API : ' . esc_html($resultats->get_error_message()) . '</p></div>';
+            $results = []; // Pas de résultats à afficher
+            $total_results = 0;
+            $total_pages = 0;
+        } elseif (empty($resultats)) {
+            echo '<div class="notice notice-warning"><p>Aucun résultat trouvé.</p></div>';
+            $results = [];
+            $total_results = 0;
+            $total_pages = 0;
+        } else {
+            // ✅ NOUVEAU : Extraire les métadonnées de pagination
+            $pagination_data = $resultats['pagination'] ?? [];
+            $total_results = $pagination_data['count'] ?? 0;
+            $total_pages = $pagination_data['maxPage'] ?? 1;
+            $current_page = $pagination_data['page'] ?? 1;
+            
+            $results = sci_format_inpi_results($resultats['data'] ?? $resultats);
+
+            //echo '<pre>';
+            //print_r($results);
+            //echo '</pre>';
+
+            //echo '<pre>Résultats bruts: ' . print_r($resultats, true) . '</pre>';
+        }
+    }
+
+    
+    // Affichage du formulaire et des résultats
     ?>
     <div class="wrap">
         <h1>🏢 SCI – Recherche et Contact</h1>
-        
-        <!-- ✅ FORMULAIRE DE RECHERCHE AJAX -->
-        <form id="sci-search-form">
+        <form method="post">
             <label for="codePostal">Sélectionnez votre code postal :</label><br><br>
             <select name="codePostal" id="codePostal" required>
                 <option value="">— Choisir un code postal —</option>
                 <?php foreach ($codesPostauxArray as $value): ?>
-                    <option value="<?php echo esc_attr($value); ?>">
+                    <option value="<?php echo esc_attr($value); ?>" <?php selected($_POST['codePostal'] ?? '', $value); ?>>
                         <?php echo esc_html($value); ?>
                     </option>
                 <?php endforeach; ?>
             </select>
             <br><br>
-            <button type="submit" id="search-btn" class="button button-primary">
-                🔍 Rechercher les SCI
-            </button>
+            <input type="submit" class="button button-primary" value="🔍 Rechercher les SCI">
             <button id="send-letters-btn" type="button" class="button button-secondary" disabled>
                 📬 Créer une campagne (<span id="selected-count">0</span>)
             </button>
         </form>
 
-        <!-- ✅ ZONE DE CHARGEMENT -->
-        <div id="search-loading" style="display: none; text-align: center; margin: 20px 0;">
-            <div style="display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #0073aa; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-            <span style="margin-left: 10px;">Recherche en cours...</span>
-        </div>
-
-        <!-- ✅ ZONE DES RÉSULTATS -->
-        <div id="search-results" style="display: none;">
-            <div id="results-header" style="display: flex; justify-content: space-between; align-items: center; margin: 20px 0;">
-                <h2 id="results-title">📋 Résultats de recherche</h2>
-                <div id="pagination-info" style="font-size: 14px; color: #666;"></div>
+        <?php if (!empty($results)): ?>
+            <h2>📋 Résultats de recherche :</h2>
+            
+            <!-- ✅ NOUVEAU : Informations sur les résultats -->
+            <div style="margin: 15px 0; padding: 10px; background: #f0f0f1; border-radius: 4px;">
+                <strong>📊 Résultats :</strong> 
+                <?php echo number_format($total_results); ?> SCI trouvées
+                <?php if ($total_results > $per_page): ?>
+                    | Page <?php echo $current_page; ?> sur <?php echo $total_pages; ?>
+                    (<?php echo (($current_page - 1) * $per_page) + 1; ?>-<?php echo min($current_page * $per_page, $total_results); ?>)
+                <?php endif; ?>
             </div>
             
-            <!-- ✅ CONTRÔLES DE PAGINATION -->
-            <div id="pagination-controls" style="margin-bottom: 15px; text-align: center;">
-                <button id="prev-page" class="button" disabled>← Précédent</button>
-                <span id="page-info" style="margin: 0 15px; font-weight: 600;"></span>
-                <button id="next-page" class="button" disabled>Suivant →</button>
-                
-                <div style="margin-top: 10px; font-size: 12px; color: #666;">
-                    <label for="page-size">Résultats par page :</label>
-                    <select id="page-size" style="margin-left: 5px;">
-                        <option value="25">25</option>
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- ✅ TABLEAU DES RÉSULTATS -->
-            <table class="widefat fixed striped" id="results-table">
+            <table class="widefat fixed striped">
                 <thead>
                     <tr>
-                        <th>Favoris</th>
+                        <th>⭐</th>
                         <th>Dénomination</th>
                         <th>Dirigeant</th>
                         <th>SIREN</th>
                         <th>Adresse</th>
                         <th>Ville</th>
                         <th>Code Postal</th>
-                        <th>Déjà contacté ?</th>
-                        <th>Géolocalisation</th>
+                        <th>Statut</th> <!-- ✅ NOUVELLE COLONNE -->
                         <th>Sélection</th>
                     </tr>
                 </thead>
-                <tbody id="results-tbody">
-                    <!-- Les résultats seront insérés ici par JavaScript -->
+                <tbody>
+                    <?php foreach ($results as $res): ?>
+                        <tr>                                    
+                            <td><button class="fav-btn" 
+                                    data-siren="<?php echo esc_attr($res['siren']); ?>"
+                                    data-denomination="<?php echo esc_attr($res['denomination']); ?>"
+                                    data-dirigeant="<?php echo esc_attr($res['dirigeant']); ?>"
+                                    data-adresse="<?php echo esc_attr($res['adresse']); ?>"
+                                    data-ville="<?php echo esc_attr($res['ville']); ?>"
+                                    data-code-postal="<?php echo esc_attr($res['code_postal']); ?>"
+                                 aria-label="Ajouter aux favoris">☆</button>
+                        
+                            </td>
+                            <td><?php echo esc_html($res['denomination']); ?></td>
+                            <td><?php echo esc_html($res['dirigeant']); ?></td>
+                            <td><?php echo esc_html($res['siren']); ?></td>
+                            <td>
+                                <?php echo esc_html($res['adresse']); ?>
+                                <?php if (!empty($res['adresse'])): ?>
+                                    <br>
+                                    <a href="https://www.google.com/maps/search/?api=1&query=<?php echo urlencode($res['adresse'] . ', ' . $res['code_postal'] . ' ' . $res['ville']); ?>" 
+                                       target="_blank" 
+                                       class="maps-link"
+                                       title="Voir sur Google Maps">
+                                        📍 Maps
+                                    </a>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo esc_html($res['ville']); ?></td>
+                            <td><?php echo esc_html($res['code_postal']); ?></td>
+                            <td>
+                                <!-- ✅ CELLULE POUR LE STATUT DE CONTACT - VIDE PAR DÉFAUT -->
+                                <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>" style="display: none;">
+                                    <span class="contact-status-icon"></span>
+                                    <span class="contact-status-text"></span>
+                                </span>
+                            </td>
+                            <td>
+                                <input type="checkbox" class="send-letter-checkbox"
+                                    data-denomination="<?php echo esc_attr($res['denomination']); ?>"
+                                    data-dirigeant="<?php echo esc_attr($res['dirigeant']); ?>"
+                                    data-siren="<?php echo esc_attr($res['siren']); ?>"
+                                    data-adresse="<?php echo esc_attr($res['adresse']); ?>"
+                                    data-ville="<?php echo esc_attr($res['ville']); ?>"
+                                    data-code-postal="<?php echo esc_attr($res['code_postal']); ?>"
+                                />
+                            </td>
+
+                        </tr>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
             
-            <!-- ✅ CONTRÔLES DE PAGINATION EN BAS -->
-            <div id="pagination-controls-bottom" style="margin-top: 15px; text-align: center;">
-                <button id="prev-page-bottom" class="button" disabled>← Précédent</button>
-                <span id="page-info-bottom" style="margin: 0 15px; font-weight: 600;"></span>
-                <button id="next-page-bottom" class="button" disabled>Suivant →</button>
-            </div>
-        </div>
+            <!-- ✅ NOUVEAU : Contrôles de pagination UNIQUEMENT EN BAS -->
+            <?php if ($total_results > $per_page): ?>
+                <div id="pagination-controls-bottom" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 6px; border: 1px solid #ddd;">
+                    <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                        <!-- Ligne 1: Navigation des pages -->
+                        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap; justify-content: center;">
+                            <button id="prev-page-bottom" 
+                                    class="button" 
+                                    <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>
+                                    data-page="<?php echo max(1, $current_page - 1); ?>"
+                                    style="min-width: 100px;">
+                                ← Précédent
+                            </button>
+                            
+                            <span id="page-info-bottom" style="font-weight: 600; color: #333; white-space: nowrap;">
+                                Page <?php echo $current_page; ?> sur <?php echo $total_pages; ?>
+                            </span>
+                            
+                            <button id="next-page-bottom" 
+                                    class="button" 
+                                    <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>
+                                    data-page="<?php echo min($total_pages, $current_page + 1); ?>"
+                                    style="min-width: 100px;">
+                                Suivant →
+                            </button>
+                        </div>
+                        
+                        <!-- Ligne 2: Sélecteur de résultats par page -->
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label for="per-page-select-bottom" style="font-weight: 500; color: #555;">
+                                Résultats par page :
+                            </label>
+                            <select id="per-page-select-bottom" style="padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px;">
+                                <option value="25" <?php selected($per_page, 25); ?>>25</option>
+                                <option value="50" <?php selected($per_page, 50); ?>>50</option>
+                                <option value="100" <?php selected($per_page, 100); ?>>100</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ✅ NOUVEAU : JavaScript pour la pagination -->
+                <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const prevBtn = document.getElementById('prev-page-bottom');
+                    const nextBtn = document.getElementById('next-page-bottom');
+                    const perPageSelect = document.getElementById('per-page-select-bottom');
+                    const codePostalSelect = document.getElementById('codePostal');
+                    
+                    // Navigation des pages
+                    if (prevBtn) {
+                        prevBtn.addEventListener('click', function() {
+                            if (!this.disabled) {
+                                navigateToPage(this.dataset.page);
+                            }
+                        });
+                    }
+                    
+                    if (nextBtn) {
+                        nextBtn.addEventListener('click', function() {
+                            if (!this.disabled) {
+                                navigateToPage(this.dataset.page);
+                            }
+                        });
+                    }
+                    
+                    // Changement du nombre de résultats par page
+                    if (perPageSelect) {
+                        perPageSelect.addEventListener('change', function() {
+                            navigateToPage(1, this.value); // Retour à la page 1 avec nouveau per_page
+                        });
+                    }
+                    
+                    function navigateToPage(page, perPage = null) {
+                        const currentUrl = new URL(window.location.href);
+                        currentUrl.searchParams.set('sci_page', page);
+                        
+                        if (perPage) {
+                            currentUrl.searchParams.set('sci_per_page', perPage);
+                        }
+                        
+                        // Conserver le code postal sélectionné
+                        if (codePostalSelect && codePostalSelect.value) {
+                            // Créer un formulaire temporaire pour POST
+                            const form = document.createElement('form');
+                            form.method = 'POST';
+                            form.action = currentUrl.pathname + currentUrl.search;
+                            
+                            const codePostalInput = document.createElement('input');
+                            codePostalInput.type = 'hidden';
+                            codePostalInput.name = 'codePostal';
+                            codePostalInput.value = codePostalSelect.value;
+                            
+                            form.appendChild(codePostalInput);
+                            document.body.appendChild(form);
+                            form.submit();
+                        } else {
+                            window.location.href = currentUrl.href;
+                        }
+                    }
+                });
+                </script>
+                
+                <!-- ✅ NOUVEAU : CSS pour la pagination -->
+                <style>
+                #pagination-controls-bottom {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                }
 
-        <!-- ✅ ZONE D'ERREUR -->
-        <div id="search-error" style="display: none;" class="notice notice-error">
-            <p id="error-message"></p>
-        </div>
+                #pagination-controls-bottom .button {
+                    background: linear-gradient(135deg, #0073aa 0%, #005a87 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: 500;
+                    transition: all 0.3s ease;
+                    cursor: pointer;
+                }
+
+                #pagination-controls-bottom .button:hover:not(:disabled) {
+                    background: linear-gradient(135deg, #005a87 0%, #004a73 100%);
+                    transform: translateY(-1px);
+                }
+
+                #pagination-controls-bottom .button:disabled {
+                    background: #ccc;
+                    cursor: not-allowed;
+                    transform: none;
+                }
+
+                #per-page-select-bottom {
+                    font-family: inherit;
+                    font-size: 14px;
+                }
+
+                /* Responsive */
+                @media (max-width: 768px) {
+                    #pagination-controls-bottom > div:first-child {
+                        flex-direction: column;
+                        gap: 10px;
+                    }
+                    
+                    #pagination-controls-bottom .button {
+                        min-width: 80px !important;
+                        padding: 6px 12px;
+                        font-size: 13px;
+                    }
+                    
+                    #page-info-bottom {
+                        font-size: 14px;
+                    }
+                }
+                </style>
+            <?php endif; ?>
+        <?php endif; ?>
     </div>
 
-    <!-- ✅ POPUP LETTRE SANS OMBRES -->
-    <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
-      <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px;">
+<!-- Popup lettre avec paiement intégré en 4 étapes -->
+<div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
+  <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
 
-        <!-- Étape 1 : Liste des SCI sélectionnées -->
-        <div class="step" id="step-1">
-          <h2>📋 SCI sélectionnées</h2>
-          <p style="color: #666; margin-bottom: 20px;">Vérifiez votre sélection avant de continuer</p>
-          <ul id="selected-sci-list" style="max-height:350px; overflow-y:auto; border:1px solid #ddd; padding:15px; margin-bottom:25px; border-radius:6px;"></ul>
-          <div style="text-align: center;">
-            <button id="to-step-2" class="button button-primary button-large">
-              ✍️ Rédiger le courriel →
-            </button>
-            <button id="close-popup-1" class="button" style="margin-left:15px;">Fermer</button>
-          </div>
-        </div>
-
-        <!-- Étape 2 : Saisie titre et contenu lettre (sera remplacée dynamiquement) -->
-        <div class="step" id="step-2" style="display:none;">
-          <!-- Le contenu sera généré par JavaScript -->
-        </div>
-
+    <!-- Étape 1 : Liste des SCI sélectionnées -->
+    <div class="step" id="step-1">
+      <h2>📋 SCI sélectionnées</h2>
+      <p style="color: #666; margin-bottom: 20px;">Vérifiez votre sélection avant de continuer</p>
+      <ul id="selected-sci-list" style="max-height:350px; overflow-y:auto; border:1px solid #ddd; padding:15px; margin-bottom:25px; border-radius:6px;"></ul>
+      <div style="text-align: center;">
+        <button id="to-step-2" class="button button-primary button-large">
+          ✍️ Rédiger le courriel →
+        </button>
+        <button id="close-popup-1" class="button" style="margin-left:15px;">Fermer</button>
       </div>
     </div>
 
-    <style>
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
-    #pagination-controls, #pagination-controls-bottom {
-        background: #f9f9f9;
-        padding: 15px;
-        border-radius: 6px;
-        border: 1px solid #ddd;
-    }
-    
-    #pagination-controls button, #pagination-controls-bottom button {
-        margin: 0 5px;
-    }
-    
-    #page-info, #page-info-bottom {
-        background: #0073aa;
-        color: white;
-        padding: 8px 15px;
-        border-radius: 4px;
-        font-size: 14px;
-    }
-    
-    #pagination-info {
-        background: #e7f3ff;
-        padding: 8px 12px;
-        border-radius: 4px;
-        border: 1px solid #b3d9ff;
-    }
-    </style>
+    <!-- Étape 2 : Saisie titre et contenu lettre (sera remplacée dynamiquement) -->
+    <div class="step" id="step-2" style="display:none;">
+      <!-- Le contenu sera généré par JavaScript -->
+    </div>
 
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // ✅ VARIABLES GLOBALES POUR LA PAGINATION
-        let currentPage = 1;
-        let totalPages = 1;
-        let totalResults = 0;
-        let currentPageSize = 50;
-        let currentCodePostal = '';
-        let isSearching = false;
+  </div>
+</div>
 
-        // ✅ ÉLÉMENTS DOM
-        const searchForm = document.getElementById('sci-search-form');
-        const codePostalSelect = document.getElementById('codePostal');
-        const searchBtn = document.getElementById('search-btn');
-        const searchLoading = document.getElementById('search-loading');
-        const searchResults = document.getElementById('search-results');
-        const searchError = document.getElementById('search-error');
-        const resultsTitle = document.getElementById('results-title');
-        const paginationInfo = document.getElementById('pagination-info');
-        const resultsTbody = document.getElementById('results-tbody');
-        const pageSizeSelect = document.getElementById('page-size');
-        
-        // Contrôles de pagination (haut)
-        const prevPageBtn = document.getElementById('prev-page');
-        const nextPageBtn = document.getElementById('next-page');
-        const pageInfo = document.getElementById('page-info');
-        
-        // Contrôles de pagination (bas)
-        const prevPageBottomBtn = document.getElementById('prev-page-bottom');
-        const nextPageBottomBtn = document.getElementById('next-page-bottom');
-        const pageInfoBottom = document.getElementById('page-info-bottom');
-
-        // ✅ FONCTION PRINCIPALE DE RECHERCHE AJAX
-        function performSearch(codePostal, page = 1, pageSize = 50) {
-            if (isSearching) return;
-            
-            isSearching = true;
-            currentCodePostal = codePostal;
-            currentPage = page;
-            currentPageSize = pageSize;
-            
-            // Afficher le loading
-            searchLoading.style.display = 'block';
-            searchResults.style.display = 'none';
-            searchError.style.display = 'none';
-            searchBtn.disabled = true;
-            searchBtn.textContent = '🔄 Recherche...';
-            
-            // Préparer les données AJAX
-            const formData = new FormData();
-            formData.append('action', 'sci_inpi_search_ajax');
-            formData.append('code_postal', codePostal);
-            formData.append('page', page);
-            formData.append('page_size', pageSize);
-            formData.append('nonce', sci_ajax.nonce);
-            
-            // Envoyer la requête AJAX
-            fetch(sci_ajax.ajax_url, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                isSearching = false;
-                searchLoading.style.display = 'none';
-                searchBtn.disabled = false;
-                searchBtn.textContent = '🔍 Rechercher les SCI';
-                
-                if (data.success) {
-                    displayResults(data.data);
-                } else {
-                    displayError(data.data || 'Erreur lors de la recherche');
-                }
-            })
-            .catch(error => {
-                isSearching = false;
-                searchLoading.style.display = 'none';
-                searchBtn.disabled = false;
-                searchBtn.textContent = '🔍 Rechercher les SCI';
-                console.error('Erreur AJAX:', error);
-                displayError('Erreur réseau lors de la recherche');
-            });
-        }
-
-        // ✅ FONCTION D'AFFICHAGE DES RÉSULTATS
-        function displayResults(data) {
-            const { results, pagination } = data;
-            
-            // Mettre à jour les variables de pagination
-            currentPage = pagination.current_page;
-            totalPages = pagination.total_pages;
-            totalResults = pagination.total_count;
-            
-            // Afficher la zone des résultats
-            searchResults.style.display = 'block';
-            searchError.style.display = 'none';
-            
-            // Mettre à jour le titre et les infos
-            resultsTitle.textContent = `📋 Résultats de recherche (${totalResults} SCI trouvées)`;
-            paginationInfo.textContent = `Page ${currentPage} sur ${totalPages} - ${results.length} résultats affichés`;
-            
-            // Vider le tableau
-            resultsTbody.innerHTML = '';
-            
-            // Remplir le tableau avec les résultats
-            results.forEach(result => {
-                const row = createResultRow(result);
-                resultsTbody.appendChild(row);
-            });
-            
-            // Mettre à jour les contrôles de pagination
-            updatePaginationControls();
-            
-            // Réinitialiser les fonctionnalités JavaScript
-            reinitializeJavaScriptFeatures();
-        }
-
-        // ✅ FONCTION DE CRÉATION D'UNE LIGNE DE RÉSULTAT
-        function createResultRow(result) {
-            const row = document.createElement('tr');
-            
-            // Préparer l'URL Google Maps
-            const mapsQuery = encodeURIComponent(`${result.adresse} ${result.code_postal} ${result.ville}`);
-            const mapsUrl = `https://www.google.com/maps/place/${mapsQuery}`;
-            
-            row.innerHTML = `
-                <td>
-                    <button class="fav-btn" 
-                            data-siren="${escapeHtml(result.siren)}"
-                            data-denomination="${escapeHtml(result.denomination)}"
-                            data-dirigeant="${escapeHtml(result.dirigeant)}"
-                            data-adresse="${escapeHtml(result.adresse)}"
-                            data-ville="${escapeHtml(result.ville)}"
-                            data-code-postal="${escapeHtml(result.code_postal)}"
-                            aria-label="Ajouter aux favoris">☆</button>
-                </td>
-                <td>${escapeHtml(result.denomination)}</td>
-                <td>${escapeHtml(result.dirigeant)}</td>
-                <td>${escapeHtml(result.siren)}</td>
-                <td>${escapeHtml(result.adresse)}</td>
-                <td>${escapeHtml(result.ville)}</td>
-                <td>${escapeHtml(result.code_postal)}</td>
-                <td>
-                    <span class="contact-status" data-siren="${escapeHtml(result.siren)}" style="display: none;">
-                        <span class="contact-status-icon"></span>
-                        <span class="contact-status-text"></span>
-                    </span>
-                </td>
-                <td>
-                    <a href="${mapsUrl}" 
-                       target="_blank" 
-                       class="maps-link"
-                       title="Localiser ${escapeHtml(result.denomination)} sur Google Maps">
-                        Localiser SCI
-                    </a>
-                </td>
-                <td>
-                    <input type="checkbox" class="send-letter-checkbox"
-                        data-denomination="${escapeHtml(result.denomination)}"
-                        data-dirigeant="${escapeHtml(result.dirigeant)}"
-                        data-siren="${escapeHtml(result.siren)}"
-                        data-adresse="${escapeHtml(result.adresse)}"
-                        data-ville="${escapeHtml(result.ville)}"
-                        data-code-postal="${escapeHtml(result.code_postal)}"
-                    />
-                </td>
-            `;
-            
-            return row;
-        }
-
-        // ✅ FONCTION DE MISE À JOUR DES CONTRÔLES DE PAGINATION
-        function updatePaginationControls() {
-            // Boutons précédent
-            prevPageBtn.disabled = currentPage <= 1;
-            prevPageBottomBtn.disabled = currentPage <= 1;
-            
-            // Boutons suivant
-            nextPageBtn.disabled = currentPage >= totalPages;
-            nextPageBottomBtn.disabled = currentPage >= totalPages;
-            
-            // Informations de page
-            const pageText = `Page ${currentPage} / ${totalPages}`;
-            pageInfo.textContent = pageText;
-            pageInfoBottom.textContent = pageText;
-        }
-
-        // ✅ FONCTION DE RÉINITIALISATION DES FONCTIONNALITÉS JAVASCRIPT
-        function reinitializeJavaScriptFeatures() {
-            // Réinitialiser les favoris
-            if (typeof window.updateFavButtons === 'function') {
-                window.updateFavButtons();
-            }
-            
-            // Réinitialiser le statut de contact
-            if (typeof window.updateContactStatus === 'function') {
-                window.updateContactStatus();
-            }
-            
-            // Réinitialiser les checkboxes pour les lettres
-            if (typeof window.updateSelectedCount === 'function') {
-                // Réattacher les event listeners pour les nouvelles checkboxes
-                const newCheckboxes = document.querySelectorAll('.send-letter-checkbox');
-                newCheckboxes.forEach(checkbox => {
-                    checkbox.addEventListener('change', window.updateSelectedCount);
-                });
-                
-                // Mettre à jour le compteur
-                window.updateSelectedCount();
-            }
-        }
-
-        // ✅ FONCTION D'AFFICHAGE D'ERREUR
-        function displayError(message) {
-            searchResults.style.display = 'none';
-            searchError.style.display = 'block';
-            document.getElementById('error-message').textContent = message;
-        }
-
-        // ✅ FONCTION UTILITAIRE POUR ÉCHAPPER LE HTML
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text || '';
-            return div.innerHTML;
-        }
-
-        // ✅ EVENT LISTENERS
-
-        // Soumission du formulaire de recherche
-        searchForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const codePostal = codePostalSelect.value;
-            if (!codePostal) {
-                alert('Veuillez sélectionner un code postal');
-                return;
-            }
-            
-            performSearch(codePostal, 1, currentPageSize);
-        });
-
-        // Changement de taille de page
-        pageSizeSelect.addEventListener('change', function() {
-            const newPageSize = parseInt(this.value);
-            if (currentCodePostal) {
-                performSearch(currentCodePostal, 1, newPageSize);
-            }
-        });
-
-        // Boutons de pagination (haut)
-        prevPageBtn.addEventListener('click', function() {
-            if (currentPage > 1) {
-                performSearch(currentCodePostal, currentPage - 1, currentPageSize);
-            }
-        });
-
-        nextPageBtn.addEventListener('click', function() {
-            if (currentPage < totalPages) {
-                performSearch(currentCodePostal, currentPage + 1, currentPageSize);
-            }
-        });
-
-        // Boutons de pagination (bas)
-        prevPageBottomBtn.addEventListener('click', function() {
-            if (currentPage > 1) {
-                performSearch(currentCodePostal, currentPage - 1, currentPageSize);
-            }
-        });
-
-        nextPageBottomBtn.addEventListener('click', function() {
-            if (currentPage < totalPages) {
-                performSearch(currentCodePostal, currentPage + 1, currentPageSize);
-            }
-        });
-
-        console.log('✅ Système de pagination INPI initialisé');
-    });
-    </script>
     <?php
 }
 
-// ✅ NOUVEAU : AJAX Handler pour la recherche avec pagination
-add_action('wp_ajax_sci_inpi_search_ajax', 'sci_inpi_search_ajax');
-add_action('wp_ajax_nopriv_sci_inpi_search_ajax', 'sci_inpi_search_ajax');
-
-function sci_inpi_search_ajax() {
-    // Vérification de sécurité
-    if (!wp_verify_nonce($_POST['nonce'] ?? '', 'sci_favoris_nonce')) {
-        wp_send_json_error('Nonce invalide');
-        return;
-    }
+// --- Appel API INPI pour récupérer les entreprises SCI par code postal ---
+function sci_fetch_inpi_data($code_postal, $page = 1, $per_page = 25) {
+    // ✅ NOUVEAU : Utiliser le gestionnaire de tokens automatique
+    $token_manager = sci_inpi_token_manager();
+    $token = $token_manager->get_token();
     
-    $code_postal = sanitize_text_field($_POST['code_postal'] ?? '');
-    $page = intval($_POST['page'] ?? 1);
-    $page_size = intval($_POST['page_size'] ?? 50);
-    
-    if (empty($code_postal)) {
-        wp_send_json_error('Code postal manquant');
-        return;
-    }
-    
-    // Valider les paramètres de pagination
-    $page = max(1, $page);
-    $page_size = max(1, min(100, $page_size)); // Limiter à 100 max
-    
-    lettre_laposte_log("=== RECHERCHE AJAX INPI ===");
-    lettre_laposte_log("Code postal: $code_postal");
-    lettre_laposte_log("Page: $page");
-    lettre_laposte_log("Taille page: $page_size");
-    
-    // Appeler la fonction de recherche avec pagination
-    $resultats = sci_fetch_inpi_data_with_pagination($code_postal, $page, $page_size);
-    
-    if (is_wp_error($resultats)) {
-        lettre_laposte_log("❌ Erreur recherche AJAX: " . $resultats->get_error_message());
-        wp_send_json_error($resultats->get_error_message());
-        return;
-    }
-    
-    if (empty($resultats['data'])) {
-        lettre_laposte_log("⚠️ Aucun résultat trouvé");
-        wp_send_json_error('Aucun résultat trouvé pour ce code postal');
-        return;
-    }
-    
-    // Formater les résultats
-    $formatted_results = sci_format_inpi_results($resultats['data']);
-    
-    lettre_laposte_log("✅ Recherche AJAX réussie: " . count($formatted_results) . " résultats formatés");
-    lettre_laposte_log("Pagination: " . json_encode($resultats['pagination']));
-    
-    wp_send_json_success([
-        'results' => $formatted_results,
-        'pagination' => $resultats['pagination']
-    ]);
-}
-
-// ✅ MODIFIÉ : Appel API INPI avec pagination
-function sci_fetch_inpi_data_with_pagination($code_postal, $page = 1, $page_size = 50) {
-    // Utiliser le gestionnaire de tokens INPI
-    $inpi_token_manager = sci_inpi_token_manager();
-    $token = $inpi_token_manager->get_token();
-
-    if (empty($token)) {
-        return new WP_Error('token_manquant', 'Impossible de générer un token INPI. Veuillez vérifier vos identifiants dans la configuration.');
+    if (!$token) {
+        return new WP_Error('token_manquant', 'Impossible d\'obtenir un token INPI valide. Vérifiez vos identifiants dans la configuration.');
     }
 
-    // Récupérer l'URL depuis la configuration
+    // Récupère l'URL depuis la configuration sécurisée
     $config_manager = sci_config_manager();
     $api_url = $config_manager->get_inpi_api_url();
 
-    // ✅ URL avec paramètres de pagination
+    // ✅ NOUVEAU : URL avec pagination
     $url = $api_url . '?' . http_build_query([
         'companyName' => 'SCI',
-        'pageSize' => $page_size,
-        'page' => $page,
+        'pageSize' => min(100, max(25, $per_page)), // Limiter entre 25 et 100
+        'page' => max(1, $page),
         'zipCodes[]' => $code_postal
     ]);
 
@@ -659,19 +487,19 @@ function sci_fetch_inpi_data_with_pagination($code_postal, $page = 1, $page_size
             'Authorization' => 'Bearer ' . $token,
             'Accept'        => 'application/json'
         ],
-        'timeout' => 30
+        'timeout' => 20
     ];
 
-    lettre_laposte_log("=== REQUÊTE API INPI AVEC PAGINATION ===");
+    lettre_laposte_log("=== REQUÊTE INPI AVEC PAGINATION ===");
     lettre_laposte_log("URL: $url");
-    lettre_laposte_log("Token: " . substr($token, 0, 20) . "...");
+    lettre_laposte_log("Page: $page, Per page: $per_page");
 
     // Effectue la requête HTTP GET via WordPress HTTP API
     $reponse = wp_remote_get($url, $args);
 
     // Vérifie s'il y a une erreur réseau
     if (is_wp_error($reponse)) {
-        lettre_laposte_log("❌ Erreur réseau INPI: " . $reponse->get_error_message());
+        lettre_laposte_log("❌ Erreur réseau: " . $reponse->get_error_message());
         return new WP_Error('requete_invalide', 'Erreur lors de la requête : ' . $reponse->get_error_message());
     }
 
@@ -680,73 +508,56 @@ function sci_fetch_inpi_data_with_pagination($code_postal, $page = 1, $page_size
     $corps     = wp_remote_retrieve_body($reponse);
     $headers   = wp_remote_retrieve_headers($reponse);
 
-    lettre_laposte_log("Code HTTP INPI: $code_http");
-    lettre_laposte_log("Headers INPI: " . json_encode($headers->getAll()));
+    lettre_laposte_log("Code HTTP: $code_http");
+    lettre_laposte_log("Headers reçus: " . json_encode($headers->getAll(), JSON_PRETTY_PRINT));
 
-    // ✅ NOUVEAU : Gestion automatique des erreurs d'authentification
+    // ✅ NOUVEAU : Gestion des erreurs d'authentification
     if ($code_http === 401 || $code_http === 403) {
-        lettre_laposte_log("🔄 Erreur d'authentification INPI détectée, tentative de régénération du token...");
+        lettre_laposte_log("❌ Erreur d'authentification (code $code_http), tentative de régénération du token...");
         
         // Tenter de régénérer le token
-        $new_token = $inpi_token_manager->handle_auth_error();
+        $new_token = $token_manager->handle_auth_error();
         
         if ($new_token) {
-            lettre_laposte_log("✅ Nouveau token généré, nouvelle tentative de requête...");
+            lettre_laposte_log("✅ Nouveau token obtenu, nouvelle tentative...");
             
-            // Refaire la requête avec le nouveau token
+            // Nouvelle tentative avec le nouveau token
             $args['headers']['Authorization'] = 'Bearer ' . $new_token;
             $reponse = wp_remote_get($url, $args);
             
-            if (is_wp_error($reponse)) {
-                return new WP_Error('requete_invalide', 'Erreur lors de la requête après régénération du token : ' . $reponse->get_error_message());
+            if (!is_wp_error($reponse)) {
+                $code_http = wp_remote_retrieve_response_code($reponse);
+                $corps = wp_remote_retrieve_body($reponse);
+                lettre_laposte_log("Nouvelle tentative - Code HTTP: $code_http");
             }
-            
-            $code_http = wp_remote_retrieve_response_code($reponse);
-            $corps = wp_remote_retrieve_body($reponse);
-            $headers = wp_remote_retrieve_headers($reponse);
-            
-            lettre_laposte_log("Code HTTP après régénération: $code_http");
-        } else {
-            return new WP_Error('token_regeneration_failed', 'Impossible de régénérer le token INPI. Vérifiez vos identifiants.');
         }
     }
 
-    // Si le code HTTP n'est toujours pas 200 OK, retourne une erreur
+    // Si le code HTTP n'est pas 200 OK, retourne une erreur
     if ($code_http !== 200) {
-        lettre_laposte_log("❌ Erreur API INPI finale: Code $code_http - $corps");
-        return new WP_Error('api_inpi', "Erreur de l'API INPI (code $code_http) : $corps");
+        lettre_laposte_log("❌ Erreur API finale (code $code_http): $corps");
+        return new WP_Error('api_inpi', "Erreur de l'API (code $code_http) : $corps");
     }
 
-    // Décoder le JSON en tableau associatif PHP
+    // Décode le JSON en tableau associatif PHP
     $donnees = json_decode($corps, true);
 
-    // ✅ EXTRAIRE LES INFORMATIONS DE PAGINATION DES HEADERS
+    // ✅ NOUVEAU : Extraire les informations de pagination depuis les headers
     $pagination_info = [
-        'current_page' => intval($headers['pagination-page'] ?? $page),
-        'page_size' => intval($headers['pagination-limit'] ?? $page_size),
-        'total_count' => intval($headers['pagination-count'] ?? 0),
-        'total_pages' => intval($headers['pagination-max-page'] ?? 1)
+        'count' => intval($headers['pagination-count'] ?? 0),
+        'page' => intval($headers['pagination-page'] ?? $page),
+        'limit' => intval($headers['pagination-limit'] ?? $per_page),
+        'maxPage' => intval($headers['pagination-max-page'] ?? 1)
     ];
 
-    lettre_laposte_log("✅ Requête INPI réussie");
-    lettre_laposte_log("Données: " . (is_array($donnees) ? count($donnees) : 0) . " résultats");
-    lettre_laposte_log("Pagination: " . json_encode($pagination_info));
+    lettre_laposte_log("✅ Succès - Pagination: " . json_encode($pagination_info));
+    lettre_laposte_log("Nombre de résultats reçus: " . count($donnees));
 
+    // ✅ NOUVEAU : Retourner les données avec les informations de pagination
     return [
         'data' => $donnees,
         'pagination' => $pagination_info
     ];
-}
-
-// ✅ FONCTION LEGACY POUR COMPATIBILITÉ (utilisée dans l'admin sans pagination)
-function sci_fetch_inpi_data($code_postal) {
-    $result = sci_fetch_inpi_data_with_pagination($code_postal, 1, 100);
-    
-    if (is_wp_error($result)) {
-        return $result;
-    }
-    
-    return $result['data'];
 }
 
 // --- Formatage des données reçues de l'API pour affichage dans le tableau ---
@@ -1069,14 +880,13 @@ function sci_favoris_page() {
                     <th>Adresse</th>
                     <th>Ville</th>
                     <th>Code Postal</th>
-                    <th>Géolocalisation</th> <!-- ✅ NOUVELLE COLONNE -->
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($favoris)): ?>
                     <tr>
-                        <td colspan="8" style="text-align:center;">Aucun favori pour le moment.</td>
+                        <td colspan="7" style="text-align:center;">Aucun favori pour le moment.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($favoris as $fav): ?>
@@ -1087,19 +897,6 @@ function sci_favoris_page() {
                             <td><?php echo esc_html($fav['adresse']); ?></td>
                             <td><?php echo esc_html($fav['ville']); ?></td>
                             <td><?php echo esc_html($fav['code_postal']); ?></td>
-                            <td>
-                                <!-- ✅ NOUVELLE CELLULE : LIEN GOOGLE MAPS -->
-                                <?php 
-                                $maps_query = urlencode($fav['adresse'] . ' ' . $fav['code_postal'] . ' ' . $fav['ville']);
-                                $maps_url = 'https://www.google.com/maps/place/' . $maps_query;
-                                ?>
-                                <a href="<?php echo esc_url($maps_url); ?>" 
-                                   target="_blank" 
-                                   class="maps-link"
-                                   title="Localiser <?php echo esc_attr($fav['denomination']); ?> sur Google Maps">
-                                    Localiser SCI
-                                </a>
-                            </td>
                             <td>
                                 <button class="remove-fav-btn button button-small" 
                                         data-siren="<?php echo esc_attr($fav['siren']); ?>">
