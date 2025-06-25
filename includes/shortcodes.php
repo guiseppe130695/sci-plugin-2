@@ -466,26 +466,35 @@ class SCI_Shortcodes {
                 100% { transform: rotate(360deg); }
             }
             
-            #pagination-controls, #pagination-controls-bottom {
+            /* ✅ PAGINATION UNIQUEMENT EN BAS */
+            #pagination-controls-bottom {
                 background: #f9f9f9;
-                padding: 15px;
+                padding: 20px;
                 border-radius: 6px;
                 border: 1px solid #ddd;
                 text-align: center;
-                margin: 15px 0;
+                margin: 20px 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 15px;
             }
             
-            #pagination-controls button, #pagination-controls-bottom button {
-                margin: 0 5px;
+            .pagination-row {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 15px;
+                flex-wrap: wrap;
             }
             
-            #page-info, #page-info-bottom {
+            #page-info-bottom {
                 background: #0073aa;
                 color: white;
                 padding: 8px 15px;
                 border-radius: 4px;
                 font-size: 14px;
-                margin: 0 10px;
+                font-weight: 600;
             }
             
             #pagination-info {
@@ -495,6 +504,22 @@ class SCI_Shortcodes {
                 border: 1px solid #b3d9ff;
                 font-size: 14px;
                 color: #0056b3;
+                font-weight: 500;
+            }
+            
+            .page-size-controls {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 14px;
+                color: #666;
+            }
+            
+            .page-size-controls select {
+                padding: 4px 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background: white;
             }
             
             #results-header {
@@ -535,11 +560,16 @@ class SCI_Shortcodes {
                     align-items: flex-start;
                 }
                 
-                #pagination-controls, #pagination-controls-bottom {
-                    padding: 10px;
+                #pagination-controls-bottom {
+                    padding: 15px;
                 }
                 
-                #page-info, #page-info-bottom {
+                .pagination-row {
+                    flex-direction: column;
+                    gap: 10px;
+                }
+                
+                #page-info-bottom {
                     font-size: 12px;
                     padding: 6px 10px;
                 }
@@ -607,22 +637,6 @@ class SCI_Shortcodes {
                     <h2 id="results-title">📋 Résultats de recherche</h2>
                     <div id="pagination-info"></div>
                 </div>
-                
-                <!-- ✅ CONTRÔLES DE PAGINATION -->
-                <div id="pagination-controls">
-                    <button id="prev-page" class="sci-button" disabled>← Précédent</button>
-                    <span id="page-info"></span>
-                    <button id="next-page" class="sci-button" disabled>Suivant →</button>
-                    
-                    <div style="margin-top: 10px; font-size: 12px; color: #666;">
-                        <label for="page-size">Résultats par page :</label>
-                        <select id="page-size" style="margin-left: 5px;">
-                            <option value="25">25</option>
-                            <option value="50" selected>50</option>
-                            <option value="100">100</option>
-                        </select>
-                    </div>
-                </div>
 
                 <!-- ✅ TABLEAU DES RÉSULTATS -->
                 <table class="sci-table" id="results-table">
@@ -645,11 +659,22 @@ class SCI_Shortcodes {
                     </tbody>
                 </table>
                 
-                <!-- ✅ CONTRÔLES DE PAGINATION EN BAS -->
+                <!-- ✅ CONTRÔLES DE PAGINATION UNIQUEMENT EN BAS -->
                 <div id="pagination-controls-bottom">
-                    <button id="prev-page-bottom" class="sci-button" disabled>← Précédent</button>
-                    <span id="page-info-bottom"></span>
-                    <button id="next-page-bottom" class="sci-button" disabled>Suivant →</button>
+                    <div class="pagination-row">
+                        <button id="prev-page-bottom" class="sci-button" disabled>← Précédent</button>
+                        <span id="page-info-bottom"></span>
+                        <button id="next-page-bottom" class="sci-button" disabled>Suivant →</button>
+                    </div>
+                    
+                    <div class="page-size-controls">
+                        <label for="page-size">Résultats par page :</label>
+                        <select id="page-size">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -707,12 +732,7 @@ class SCI_Shortcodes {
             const resultsTbody = document.getElementById('results-tbody');
             const pageSizeSelect = document.getElementById('page-size');
             
-            // Contrôles de pagination (haut)
-            const prevPageBtn = document.getElementById('prev-page');
-            const nextPageBtn = document.getElementById('next-page');
-            const pageInfo = document.getElementById('page-info');
-            
-            // Contrôles de pagination (bas)
+            // ✅ CONTRÔLES DE PAGINATION (UNIQUEMENT EN BAS)
             const prevPageBottomBtn = document.getElementById('prev-page-bottom');
             const nextPageBottomBtn = document.getElementById('next-page-bottom');
             const pageInfoBottom = document.getElementById('page-info-bottom');
@@ -859,16 +879,13 @@ class SCI_Shortcodes {
             // ✅ FONCTION DE MISE À JOUR DES CONTRÔLES DE PAGINATION
             function updatePaginationControls() {
                 // Boutons précédent
-                prevPageBtn.disabled = currentPage <= 1;
                 prevPageBottomBtn.disabled = currentPage <= 1;
                 
                 // Boutons suivant
-                nextPageBtn.disabled = currentPage >= totalPages;
                 nextPageBottomBtn.disabled = currentPage >= totalPages;
                 
                 // Informations de page
                 const pageText = `Page ${currentPage} / ${totalPages}`;
-                pageInfo.textContent = pageText;
                 pageInfoBottom.textContent = pageText;
             }
 
@@ -934,20 +951,7 @@ class SCI_Shortcodes {
                 }
             });
 
-            // Boutons de pagination (haut)
-            prevPageBtn.addEventListener('click', function() {
-                if (currentPage > 1) {
-                    performSearch(currentCodePostal, currentPage - 1, currentPageSize);
-                }
-            });
-
-            nextPageBtn.addEventListener('click', function() {
-                if (currentPage < totalPages) {
-                    performSearch(currentCodePostal, currentPage + 1, currentPageSize);
-                }
-            });
-
-            // Boutons de pagination (bas)
+            // ✅ BOUTONS DE PAGINATION (UNIQUEMENT EN BAS)
             prevPageBottomBtn.addEventListener('click', function() {
                 if (currentPage > 1) {
                     performSearch(currentCodePostal, currentPage - 1, currentPageSize);
@@ -960,7 +964,7 @@ class SCI_Shortcodes {
                 }
             });
 
-            console.log('✅ Système de pagination INPI frontend initialisé');
+            console.log('✅ Système de pagination INPI frontend initialisé (pagination en bas uniquement)');
         });
         </script>
         <?php
