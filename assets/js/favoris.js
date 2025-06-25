@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ✅ NOUVELLE FONCTION : Met à jour le statut de contact des SCI
+    // ✅ MODIFIÉ : Met à jour le statut de contact des SCI - SEULEMENT L'EMOJI
     function updateContactStatus() {
         // Vérifier que les données sont disponibles
         if (typeof sci_ajax === 'undefined' || !sci_ajax.contacted_sirens) {
@@ -37,9 +37,8 @@ document.addEventListener('DOMContentLoaded', function() {
         statusElements.forEach(statusElement => {
             const siren = statusElement.getAttribute('data-siren');
             const iconElement = statusElement.querySelector('.contact-status-icon');
-            const textElement = statusElement.querySelector('.contact-status-text');
             
-            if (!siren || !iconElement || !textElement) {
+            if (!siren || !iconElement) {
                 return;
             }
 
@@ -47,12 +46,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const isContacted = contactedSirens.includes(siren);
             
             if (isContacted) {
-                // SCI déjà contactée - Afficher le badge
+                // ✅ SCI déjà contactée - Afficher SEULEMENT l'emoji
                 statusElement.className = 'contact-status contacted';
                 statusElement.style.display = 'inline-block';
                 iconElement.textContent = '✅';
-                textElement.textContent = 'Contacté';
                 statusElement.title = 'Cette SCI a déjà été contactée dans une campagne précédente';
+                
+                // ✅ MASQUER le texte s'il existe
+                const textElement = statusElement.querySelector('.contact-status-text');
+                if (textElement) {
+                    textElement.style.display = 'none';
+                }
             } else {
                 // SCI non contactée - Masquer complètement le badge
                 statusElement.style.display = 'none';

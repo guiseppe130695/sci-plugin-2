@@ -231,6 +231,7 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -292,6 +293,7 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -362,31 +364,23 @@ class SCI_Shortcodes {
                 margin: 0;
             }
             
-            /* ✅ STYLES POUR LE STATUT DE CONTACT */
+            /* ✅ MODIFIÉ : Styles pour le statut de contact - SEULEMENT L'EMOJI */
             .contact-status {
                 display: inline-block;
-                padding: 4px 8px;
-                border-radius: 12px;
-                font-size: 11px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                transition: all 0.3s ease;
+                font-size: 16px;
+                color: #28a745;
             }
             
             .contact-status.contacted {
-                background: #e8f5e8;
-                color: #2d5a2d;
-                border: 1px solid #c3e6c3;
+                color: #28a745;
             }
             
             .contact-status-icon {
-                margin-right: 4px;
-                font-size: 12px;
+                font-size: 16px;
             }
             
             .contact-status-text {
-                font-size: 10px;
+                display: none;
             }
             
             /* ✅ STYLES POUR LES LIENS GOOGLE MAPS */
@@ -426,17 +420,11 @@ class SCI_Shortcodes {
                 }
                 
                 .contact-status {
-                    font-size: 10px;
-                    padding: 2px 6px;
+                    font-size: 14px;
                 }
                 
                 .contact-status-icon {
-                    margin-right: 2px;
-                    font-size: 10px;
-                }
-                
-                .contact-status-text {
-                    font-size: 9px;
+                    font-size: 14px;
                 }
                 
                 .maps-link {
@@ -509,15 +497,15 @@ class SCI_Shortcodes {
                 <table class="sci-table">
                     <thead>
                         <tr>
-                            <th>⭐</th>
+                            <th>Favoris</th>
                             <th>Dénomination</th>
                             <th>Dirigeant</th>
                             <th>SIREN</th>
                             <th>Adresse</th>
                             <th>Ville</th>
                             <th>Code Postal</th>
-                            <th>Statut</th>
-                            <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
+                            <th>Déjà contacté ?</th>
+                            <th>Géolocalisation</th>
                             <th>Sélection</th>
                         </tr>
                     </thead>
@@ -541,10 +529,9 @@ class SCI_Shortcodes {
                                 <td><?php echo esc_html($res['ville']); ?></td>
                                 <td><?php echo esc_html($res['code_postal']); ?></td>
                                 <td>
-                                    <!-- ✅ CELLULE POUR LE STATUT DE CONTACT - VIDE PAR DÉFAUT -->
+                                    <!-- ✅ MODIFIÉ : CELLULE POUR LE STATUT DE CONTACT - SEULEMENT L'EMOJI -->
                                     <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>" style="display: none;">
                                         <span class="contact-status-icon"></span>
-                                        <span class="contact-status-text"></span>
                                     </span>
                                 </td>
                                 <td>
@@ -557,7 +544,7 @@ class SCI_Shortcodes {
                                        target="_blank" 
                                        class="maps-link"
                                        title="Localiser <?php echo esc_attr($res['denomination']); ?> sur Google Maps">
-                                        📍 Maps
+                                        📍 Localiser
                                     </a>
                                 </td>
                                 <td>
@@ -577,7 +564,7 @@ class SCI_Shortcodes {
             <?php endif; ?>
         </div>
         
-        <!-- ✅ POPUP LETTRE SANS OMBRES -->
+        <!-- ✅ POPUP LETTRE AVEC STYLES INLINE -->
         <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
             <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px;">
                 <!-- Étape 1 : Liste des SCI sélectionnées -->
@@ -683,6 +670,7 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -713,6 +701,7 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -768,13 +757,6 @@ class SCI_Shortcodes {
                 outline: 2px solid #4285f4;
                 outline-offset: 2px;
             }
-            
-            @media (max-width: 768px) {
-                .maps-link {
-                    font-size: 11px;
-                    padding: 3px 6px;
-                }
-            }
             </style>
             
             <h1><?php echo esc_html($atts['title']); ?></h1>
@@ -793,7 +775,7 @@ class SCI_Shortcodes {
                             <th>Adresse</th>
                             <th>Ville</th>
                             <th>Code Postal</th>
-                            <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
+                            <th>Géolocalisation</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -816,7 +798,7 @@ class SCI_Shortcodes {
                                        target="_blank" 
                                        class="maps-link"
                                        title="Localiser <?php echo esc_attr($fav['denomination']); ?> sur Google Maps">
-                                        📍 Maps
+                                        📍 Localiser
                                     </a>
                                 </td>
                                 <td>
@@ -920,6 +902,7 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -954,6 +937,7 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -1058,6 +1042,7 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -1092,6 +1077,7 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
