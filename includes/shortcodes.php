@@ -20,6 +20,65 @@ class SCI_Shortcodes {
         // AJAX handlers pour le frontend
         add_action('wp_ajax_sci_frontend_search', array($this, 'frontend_search_ajax'));
         add_action('wp_ajax_nopriv_sci_frontend_search', array($this, 'frontend_search_ajax'));
+        
+        // ✅ NOUVEAU : AJAX handler pour la recherche avec pagination (frontend)
+        add_action('wp_ajax_sci_inpi_search_ajax', array($this, 'frontend_inpi_search_ajax'));
+        add_action('wp_ajax_nopriv_sci_inpi_search_ajax', array($this, 'frontend_inpi_search_ajax'));
+    }
+    
+    /**
+     * ✅ NOUVEAU : AJAX handler pour la recherche INPI avec pagination (frontend)
+     */
+    public function frontend_inpi_search_ajax() {
+        // Vérification de sécurité
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'sci_favoris_nonce')) {
+            wp_send_json_error('Nonce invalide');
+            return;
+        }
+        
+        $code_postal = sanitize_text_field($_POST['code_postal'] ?? '');
+        $page = intval($_POST['page'] ?? 1);
+        $page_size = intval($_POST['page_size'] ?? 50);
+        
+        if (empty($code_postal)) {
+            wp_send_json_error('Code postal manquant');
+            return;
+        }
+        
+        // Valider les paramètres de pagination
+        $page = max(1, $page);
+        $page_size = max(1, min(100, $page_size)); // Limiter à 100 max
+        
+        lettre_laposte_log("=== RECHERCHE AJAX INPI FRONTEND ===");
+        lettre_laposte_log("Code postal: $code_postal");
+        lettre_laposte_log("Page: $page");
+        lettre_laposte_log("Taille page: $page_size");
+        
+        // Appeler la fonction de recherche avec pagination
+        $resultats = sci_fetch_inpi_data_with_pagination($code_postal, $page, $page_size);
+        
+        if (is_wp_error($resultats)) {
+            lettre_laposte_log("❌ Erreur recherche AJAX frontend: " . $resultats->get_error_message());
+            wp_send_json_error($resultats->get_error_message());
+            return;
+        }
+        
+        if (empty($resultats['data'])) {
+            lettre_laposte_log("⚠️ Aucun résultat trouvé (frontend)");
+            wp_send_json_error('Aucun résultat trouvé pour ce code postal');
+            return;
+        }
+        
+        // Formater les résultats
+        $formatted_results = sci_format_inpi_results($resultats['data']);
+        
+        lettre_laposte_log("✅ Recherche AJAX frontend réussie: " . count($formatted_results) . " résultats formatés");
+        lettre_laposte_log("Pagination: " . json_encode($resultats['pagination']));
+        
+        wp_send_json_success([
+            'results' => $formatted_results,
+            'pagination' => $resultats['pagination']
+        ]);
     }
     
     /**
@@ -111,7 +170,7 @@ class SCI_Shortcodes {
                 'sci-frontend-style',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/style.css',
                 array(),
-                '1.0.2' // Version incrémentée pour forcer le rechargement
+                '1.0.3' // Version incrémentée pour forcer le rechargement
             );
         }
         
@@ -121,7 +180,7 @@ class SCI_Shortcodes {
                 'sci-frontend-favoris',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js',
                 array(),
-                '1.0.2',
+                '1.0.3',
                 true
             );
         }
@@ -131,7 +190,7 @@ class SCI_Shortcodes {
                 'sci-frontend-lettre',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js',
                 array(),
-                '1.0.2',
+                '1.0.3',
                 true
             );
         }
@@ -141,7 +200,7 @@ class SCI_Shortcodes {
                 'sci-frontend-payment',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js',
                 array(),
-                '1.0.2',
+                '1.0.3',
                 true
             );
         }
@@ -178,7 +237,7 @@ class SCI_Shortcodes {
     }
     
     /**
-     * Shortcode [sci_panel] - Panneau principal de recherche SCI
+     * Shortcode [sci_panel] - Panneau principal de recherche SCI avec pagination AJAX
      */
     public function sci_panel_shortcode($atts) {
         // ✅ FORCER LE CHARGEMENT DES ASSETS
@@ -202,24 +261,6 @@ class SCI_Shortcodes {
             $codesPostauxArray = explode(';', $codePostal);
         }
         
-        $resultats = [];
-        
-        // Traitement de la recherche
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['codePostal']) && wp_verify_nonce($_POST['sci_search_nonce'], 'sci_search_action')) {
-            $postal_code = sanitize_text_field($_POST['codePostal']);
-            $resultats = sci_fetch_inpi_data($postal_code);
-            
-            if (is_wp_error($resultats)) {
-                $error_message = $resultats->get_error_message();
-                $resultats = [];
-            } elseif (empty($resultats)) {
-                $warning_message = 'Aucun résultat trouvé.';
-                $resultats = [];
-            } else {
-                $results = sci_format_inpi_results($resultats);
-            }
-        }
-        
         ob_start();
         ?>
         <div class="sci-frontend-wrapper">
@@ -231,7 +272,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -293,7 +333,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -364,7 +403,7 @@ class SCI_Shortcodes {
                 margin: 0;
             }
             
-            /* ✅ MODIFIÉ : Styles pour le statut de contact - SEULEMENT L'EMOJI */
+            /* ✅ STYLES POUR LE STATUT DE CONTACT - SIMPLIFIÉ */
             .contact-status {
                 display: inline-block;
                 font-size: 16px;
@@ -373,6 +412,10 @@ class SCI_Shortcodes {
             
             .contact-status.contacted {
                 color: #28a745;
+            }
+            
+            .contact-status.not-contacted {
+                display: none;
             }
             
             .contact-status-icon {
@@ -402,9 +445,64 @@ class SCI_Shortcodes {
                 text-decoration: none;
             }
             
-            .maps-link:focus {
-                outline: 2px solid #4285f4;
-                outline-offset: 2px;
+            /* ✅ STYLES POUR LA PAGINATION */
+            #search-loading {
+                text-align: center;
+                margin: 20px 0;
+            }
+            
+            .loading-spinner {
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+                border: 3px solid #f3f3f3;
+                border-top: 3px solid #0073aa;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+            }
+            
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            
+            #pagination-controls, #pagination-controls-bottom {
+                background: #f9f9f9;
+                padding: 15px;
+                border-radius: 6px;
+                border: 1px solid #ddd;
+                text-align: center;
+                margin: 15px 0;
+            }
+            
+            #pagination-controls button, #pagination-controls-bottom button {
+                margin: 0 5px;
+            }
+            
+            #page-info, #page-info-bottom {
+                background: #0073aa;
+                color: white;
+                padding: 8px 15px;
+                border-radius: 4px;
+                font-size: 14px;
+                margin: 0 10px;
+            }
+            
+            #pagination-info {
+                background: #e7f3ff;
+                padding: 8px 12px;
+                border-radius: 4px;
+                border: 1px solid #b3d9ff;
+                font-size: 14px;
+                color: #0056b3;
+            }
+            
+            #results-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin: 20px 0;
+                flex-wrap: wrap;
             }
             
             @media (max-width: 768px) {
@@ -430,6 +528,20 @@ class SCI_Shortcodes {
                 .maps-link {
                     font-size: 11px;
                     padding: 3px 6px;
+                }
+                
+                #results-header {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+                
+                #pagination-controls, #pagination-controls-bottom {
+                    padding: 10px;
+                }
+                
+                #page-info, #page-info-bottom {
+                    font-size: 12px;
+                    padding: 6px 10px;
                 }
             }
             </style>
@@ -464,37 +576,56 @@ class SCI_Shortcodes {
                 ?>
             <?php endif; ?>
             
-            <?php if (isset($error_message)): ?>
-                <div class="sci-error">Erreur API : <?php echo esc_html($error_message); ?></div>
-            <?php endif; ?>
-            
-            <?php if (isset($warning_message)): ?>
-                <div class="sci-warning"><?php echo esc_html($warning_message); ?></div>
-            <?php endif; ?>
-            
             <div class="sci-form">
-                <form method="post">
-                    <?php wp_nonce_field('sci_search_action', 'sci_search_nonce'); ?>
+                <form id="sci-search-form">
                     <label for="codePostal">Sélectionnez votre code postal :</label>
                     <select name="codePostal" id="codePostal" required>
                         <option value="">— Choisir un code postal —</option>
                         <?php foreach ($codesPostauxArray as $value): ?>
-                            <option value="<?php echo esc_attr($value); ?>" <?php selected($_POST['codePostal'] ?? '', $value); ?>>
+                            <option value="<?php echo esc_attr($value); ?>">
                                 <?php echo esc_html($value); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
                     <br>
-                    <button type="submit" class="sci-button">🔍 Rechercher les SCI</button>
+                    <button type="submit" id="search-btn" class="sci-button">🔍 Rechercher les SCI</button>
                     <button id="send-letters-btn" type="button" class="sci-button secondary" disabled>
                         📬 Créer une campagne (<span id="selected-count">0</span>)
                     </button>
                 </form>
             </div>
             
-            <?php if (!empty($results)): ?>
-                <h2>📋 Résultats de recherche :</h2>
-                <table class="sci-table">
+            <!-- ✅ ZONE DE CHARGEMENT -->
+            <div id="search-loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <span style="margin-left: 10px;">Recherche en cours...</span>
+            </div>
+
+            <!-- ✅ ZONE DES RÉSULTATS -->
+            <div id="search-results" style="display: none;">
+                <div id="results-header">
+                    <h2 id="results-title">📋 Résultats de recherche</h2>
+                    <div id="pagination-info"></div>
+                </div>
+                
+                <!-- ✅ CONTRÔLES DE PAGINATION -->
+                <div id="pagination-controls">
+                    <button id="prev-page" class="sci-button" disabled>← Précédent</button>
+                    <span id="page-info"></span>
+                    <button id="next-page" class="sci-button" disabled>Suivant →</button>
+                    
+                    <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                        <label for="page-size">Résultats par page :</label>
+                        <select id="page-size" style="margin-left: 5px;">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- ✅ TABLEAU DES RÉSULTATS -->
+                <table class="sci-table" id="results-table">
                     <thead>
                         <tr>
                             <th>Favoris</th>
@@ -509,62 +640,26 @@ class SCI_Shortcodes {
                             <th>Sélection</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <?php foreach ($results as $res): ?>
-                            <tr>
-                                <td>
-                                    <button class="fav-btn" 
-                                            data-siren="<?php echo esc_attr($res['siren']); ?>"
-                                            data-denomination="<?php echo esc_attr($res['denomination']); ?>"
-                                            data-dirigeant="<?php echo esc_attr($res['dirigeant']); ?>"
-                                            data-adresse="<?php echo esc_attr($res['adresse']); ?>"
-                                            data-ville="<?php echo esc_attr($res['ville']); ?>"
-                                            data-code-postal="<?php echo esc_attr($res['code_postal']); ?>"
-                                            aria-label="Ajouter aux favoris">☆</button>
-                                </td>
-                                <td><?php echo esc_html($res['denomination']); ?></td>
-                                <td><?php echo esc_html($res['dirigeant']); ?></td>
-                                <td><?php echo esc_html($res['siren']); ?></td>
-                                <td><?php echo esc_html($res['adresse']); ?></td>
-                                <td><?php echo esc_html($res['ville']); ?></td>
-                                <td><?php echo esc_html($res['code_postal']); ?></td>
-                                <td>
-                                    <!-- ✅ MODIFIÉ : CELLULE POUR LE STATUT DE CONTACT - SEULEMENT L'EMOJI -->
-                                    <span class="contact-status" data-siren="<?php echo esc_attr($res['siren']); ?>" style="display: none;">
-                                        <span class="contact-status-icon"></span>
-                                    </span>
-                                </td>
-                                <td>
-                                    <!-- ✅ NOUVELLE CELLULE : LIEN GOOGLE MAPS -->
-                                    <?php 
-                                    $maps_query = urlencode($res['adresse'] . ' ' . $res['code_postal'] . ' ' . $res['ville']);
-                                    $maps_url = 'https://www.google.com/maps/place/' . $maps_query;
-                                    ?>
-                                    <a href="<?php echo esc_url($maps_url); ?>" 
-                                       target="_blank" 
-                                       class="maps-link"
-                                       title="Localiser <?php echo esc_attr($res['denomination']); ?> sur Google Maps">
-                                        📍 Localiser
-                                    </a>
-                                </td>
-                                <td>
-                                    <input type="checkbox" class="send-letter-checkbox"
-                                        data-denomination="<?php echo esc_attr($res['denomination']); ?>"
-                                        data-dirigeant="<?php echo esc_attr($res['dirigeant']); ?>"
-                                        data-siren="<?php echo esc_attr($res['siren']); ?>"
-                                        data-adresse="<?php echo esc_attr($res['adresse']); ?>"
-                                        data-ville="<?php echo esc_attr($res['ville']); ?>"
-                                        data-code-postal="<?php echo esc_attr($res['code_postal']); ?>"
-                                    />
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
+                    <tbody id="results-tbody">
+                        <!-- Les résultats seront insérés ici par JavaScript -->
                     </tbody>
                 </table>
-            <?php endif; ?>
+                
+                <!-- ✅ CONTRÔLES DE PAGINATION EN BAS -->
+                <div id="pagination-controls-bottom">
+                    <button id="prev-page-bottom" class="sci-button" disabled>← Précédent</button>
+                    <span id="page-info-bottom"></span>
+                    <button id="next-page-bottom" class="sci-button" disabled>Suivant →</button>
+                </div>
+            </div>
+
+            <!-- ✅ ZONE D'ERREUR -->
+            <div id="search-error" style="display: none;" class="sci-error">
+                <p id="error-message"></p>
+            </div>
         </div>
         
-        <!-- ✅ POPUP LETTRE AVEC STYLES INLINE -->
+        <!-- ✅ POPUP LETTRE -->
         <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
             <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px;">
                 <!-- Étape 1 : Liste des SCI sélectionnées -->
@@ -589,51 +684,283 @@ class SCI_Shortcodes {
             </div>
         </div>
         
-        <!-- ✅ SCRIPT INLINE POUR GARANTIR LE FONCTIONNEMENT -->
+        <!-- ✅ SCRIPT JAVASCRIPT POUR LA PAGINATION -->
         <script>
-        // Vérifier que les variables AJAX sont disponibles
-        if (typeof sci_ajax === 'undefined') {
-            window.sci_ajax = {
-                ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                nonce: '<?php echo wp_create_nonce('sci_favoris_nonce'); ?>',
-                contacted_sirens: <?php echo json_encode($campaign_manager->get_user_contacted_sirens()); ?>
-            };
-        }
-        
-        if (typeof sciPaymentData === 'undefined') {
-            window.sciPaymentData = {
-                ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                nonce: '<?php echo wp_create_nonce('sci_campaign_nonce'); ?>',
-                unit_price: <?php echo $woocommerce_integration->get_unit_price(); ?>,
-                woocommerce_ready: <?php echo $woocommerce_integration->is_woocommerce_ready() ? 'true' : 'false'; ?>,
-                campaigns_url: '<?php echo $config_manager->get_sci_campaigns_page_url(); ?>' // ✅ MODIFIÉ : Utilise l'URL stockée
-            };
-        }
-        
-        if (typeof ajaxurl === 'undefined') {
-            window.ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
-        }
-        
-        // Forcer le rechargement des scripts si nécessaire
         document.addEventListener('DOMContentLoaded', function() {
-            // Vérifier si les fonctions principales existent
-            if (typeof updateSelectedCount === 'undefined' || typeof window.getSelectedEntries === 'undefined') {
-                console.log('Scripts SCI non chargés, tentative de rechargement...');
+            // ✅ VARIABLES GLOBALES POUR LA PAGINATION
+            let currentPage = 1;
+            let totalPages = 1;
+            let totalResults = 0;
+            let currentPageSize = 50;
+            let currentCodePostal = '';
+            let isSearching = false;
+
+            // ✅ ÉLÉMENTS DOM
+            const searchForm = document.getElementById('sci-search-form');
+            const codePostalSelect = document.getElementById('codePostal');
+            const searchBtn = document.getElementById('search-btn');
+            const searchLoading = document.getElementById('search-loading');
+            const searchResults = document.getElementById('search-results');
+            const searchError = document.getElementById('search-error');
+            const resultsTitle = document.getElementById('results-title');
+            const paginationInfo = document.getElementById('pagination-info');
+            const resultsTbody = document.getElementById('results-tbody');
+            const pageSizeSelect = document.getElementById('page-size');
+            
+            // Contrôles de pagination (haut)
+            const prevPageBtn = document.getElementById('prev-page');
+            const nextPageBtn = document.getElementById('next-page');
+            const pageInfo = document.getElementById('page-info');
+            
+            // Contrôles de pagination (bas)
+            const prevPageBottomBtn = document.getElementById('prev-page-bottom');
+            const nextPageBottomBtn = document.getElementById('next-page-bottom');
+            const pageInfoBottom = document.getElementById('page-info-bottom');
+
+            // ✅ FONCTION PRINCIPALE DE RECHERCHE AJAX
+            function performSearch(codePostal, page = 1, pageSize = 50) {
+                if (isSearching) return;
                 
-                // Charger les scripts manuellement
-                const scripts = [
-                    '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/favoris.js'; ?>',
-                    '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/lettre.js'; ?>',
-                    '<?php echo plugin_dir_url(dirname(__FILE__)) . 'assets/js/payment.js'; ?>'
-                ];
+                isSearching = true;
+                currentCodePostal = codePostal;
+                currentPage = page;
+                currentPageSize = pageSize;
                 
-                scripts.forEach(function(src) {
-                    const script = document.createElement('script');
-                    script.src = src + '?v=' + Date.now();
-                    script.async = false;
-                    document.head.appendChild(script);
+                // Afficher le loading
+                searchLoading.style.display = 'block';
+                searchResults.style.display = 'none';
+                searchError.style.display = 'none';
+                searchBtn.disabled = true;
+                searchBtn.textContent = '🔄 Recherche...';
+                
+                // Préparer les données AJAX
+                const formData = new FormData();
+                formData.append('action', 'sci_inpi_search_ajax');
+                formData.append('code_postal', codePostal);
+                formData.append('page', page);
+                formData.append('page_size', pageSize);
+                formData.append('nonce', sci_ajax.nonce);
+                
+                // Envoyer la requête AJAX
+                fetch(sci_ajax.ajax_url, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    isSearching = false;
+                    searchLoading.style.display = 'none';
+                    searchBtn.disabled = false;
+                    searchBtn.textContent = '🔍 Rechercher les SCI';
+                    
+                    if (data.success) {
+                        displayResults(data.data);
+                    } else {
+                        displayError(data.data || 'Erreur lors de la recherche');
+                    }
+                })
+                .catch(error => {
+                    isSearching = false;
+                    searchLoading.style.display = 'none';
+                    searchBtn.disabled = false;
+                    searchBtn.textContent = '🔍 Rechercher les SCI';
+                    console.error('Erreur AJAX:', error);
+                    displayError('Erreur réseau lors de la recherche');
                 });
             }
+
+            // ✅ FONCTION D'AFFICHAGE DES RÉSULTATS
+            function displayResults(data) {
+                const { results, pagination } = data;
+                
+                // Mettre à jour les variables de pagination
+                currentPage = pagination.current_page;
+                totalPages = pagination.total_pages;
+                totalResults = pagination.total_count;
+                
+                // Afficher la zone des résultats
+                searchResults.style.display = 'block';
+                searchError.style.display = 'none';
+                
+                // Mettre à jour le titre et les infos
+                resultsTitle.textContent = `📋 Résultats de recherche (${totalResults} SCI trouvées)`;
+                paginationInfo.textContent = `Page ${currentPage} sur ${totalPages} - ${results.length} résultats affichés`;
+                
+                // Vider le tableau
+                resultsTbody.innerHTML = '';
+                
+                // Remplir le tableau avec les résultats
+                results.forEach(result => {
+                    const row = createResultRow(result);
+                    resultsTbody.appendChild(row);
+                });
+                
+                // Mettre à jour les contrôles de pagination
+                updatePaginationControls();
+                
+                // Réinitialiser les fonctionnalités JavaScript
+                reinitializeJavaScriptFeatures();
+            }
+
+            // ✅ FONCTION DE CRÉATION D'UNE LIGNE DE RÉSULTAT
+            function createResultRow(result) {
+                const row = document.createElement('tr');
+                
+                // Préparer l'URL Google Maps
+                const mapsQuery = encodeURIComponent(`${result.adresse} ${result.code_postal} ${result.ville}`);
+                const mapsUrl = `https://www.google.com/maps/place/${mapsQuery}`;
+                
+                row.innerHTML = `
+                    <td>
+                        <button class="fav-btn" 
+                                data-siren="${escapeHtml(result.siren)}"
+                                data-denomination="${escapeHtml(result.denomination)}"
+                                data-dirigeant="${escapeHtml(result.dirigeant)}"
+                                data-adresse="${escapeHtml(result.adresse)}"
+                                data-ville="${escapeHtml(result.ville)}"
+                                data-code-postal="${escapeHtml(result.code_postal)}"
+                                aria-label="Ajouter aux favoris">☆</button>
+                    </td>
+                    <td>${escapeHtml(result.denomination)}</td>
+                    <td>${escapeHtml(result.dirigeant)}</td>
+                    <td>${escapeHtml(result.siren)}</td>
+                    <td>${escapeHtml(result.adresse)}</td>
+                    <td>${escapeHtml(result.ville)}</td>
+                    <td>${escapeHtml(result.code_postal)}</td>
+                    <td>
+                        <span class="contact-status" data-siren="${escapeHtml(result.siren)}" style="display: none;">
+                            <span class="contact-status-icon"></span>
+                            <span class="contact-status-text"></span>
+                        </span>
+                    </td>
+                    <td>
+                        <a href="${mapsUrl}" 
+                           target="_blank" 
+                           class="maps-link"
+                           title="Localiser ${escapeHtml(result.denomination)} sur Google Maps">
+                            Localiser SCI
+                        </a>
+                    </td>
+                    <td>
+                        <input type="checkbox" class="send-letter-checkbox"
+                            data-denomination="${escapeHtml(result.denomination)}"
+                            data-dirigeant="${escapeHtml(result.dirigeant)}"
+                            data-siren="${escapeHtml(result.siren)}"
+                            data-adresse="${escapeHtml(result.adresse)}"
+                            data-ville="${escapeHtml(result.ville)}"
+                            data-code-postal="${escapeHtml(result.code_postal)}"
+                        />
+                    </td>
+                `;
+                
+                return row;
+            }
+
+            // ✅ FONCTION DE MISE À JOUR DES CONTRÔLES DE PAGINATION
+            function updatePaginationControls() {
+                // Boutons précédent
+                prevPageBtn.disabled = currentPage <= 1;
+                prevPageBottomBtn.disabled = currentPage <= 1;
+                
+                // Boutons suivant
+                nextPageBtn.disabled = currentPage >= totalPages;
+                nextPageBottomBtn.disabled = currentPage >= totalPages;
+                
+                // Informations de page
+                const pageText = `Page ${currentPage} / ${totalPages}`;
+                pageInfo.textContent = pageText;
+                pageInfoBottom.textContent = pageText;
+            }
+
+            // ✅ FONCTION DE RÉINITIALISATION DES FONCTIONNALITÉS JAVASCRIPT
+            function reinitializeJavaScriptFeatures() {
+                // Réinitialiser les favoris
+                if (typeof window.updateFavButtons === 'function') {
+                    window.updateFavButtons();
+                }
+                
+                // Réinitialiser le statut de contact
+                if (typeof window.updateContactStatus === 'function') {
+                    window.updateContactStatus();
+                }
+                
+                // Réinitialiser les checkboxes pour les lettres
+                if (typeof window.updateSelectedCount === 'function') {
+                    // Réattacher les event listeners pour les nouvelles checkboxes
+                    const newCheckboxes = document.querySelectorAll('.send-letter-checkbox');
+                    newCheckboxes.forEach(checkbox => {
+                        checkbox.addEventListener('change', window.updateSelectedCount);
+                    });
+                    
+                    // Mettre à jour le compteur
+                    window.updateSelectedCount();
+                }
+            }
+
+            // ✅ FONCTION D'AFFICHAGE D'ERREUR
+            function displayError(message) {
+                searchResults.style.display = 'none';
+                searchError.style.display = 'block';
+                document.getElementById('error-message').textContent = message;
+            }
+
+            // ✅ FONCTION UTILITAIRE POUR ÉCHAPPER LE HTML
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text || '';
+                return div.innerHTML;
+            }
+
+            // ✅ EVENT LISTENERS
+
+            // Soumission du formulaire de recherche
+            searchForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const codePostal = codePostalSelect.value;
+                if (!codePostal) {
+                    alert('Veuillez sélectionner un code postal');
+                    return;
+                }
+                
+                performSearch(codePostal, 1, currentPageSize);
+            });
+
+            // Changement de taille de page
+            pageSizeSelect.addEventListener('change', function() {
+                const newPageSize = parseInt(this.value);
+                if (currentCodePostal) {
+                    performSearch(currentCodePostal, 1, newPageSize);
+                }
+            });
+
+            // Boutons de pagination (haut)
+            prevPageBtn.addEventListener('click', function() {
+                if (currentPage > 1) {
+                    performSearch(currentCodePostal, currentPage - 1, currentPageSize);
+                }
+            });
+
+            nextPageBtn.addEventListener('click', function() {
+                if (currentPage < totalPages) {
+                    performSearch(currentCodePostal, currentPage + 1, currentPageSize);
+                }
+            });
+
+            // Boutons de pagination (bas)
+            prevPageBottomBtn.addEventListener('click', function() {
+                if (currentPage > 1) {
+                    performSearch(currentCodePostal, currentPage - 1, currentPageSize);
+                }
+            });
+
+            nextPageBottomBtn.addEventListener('click', function() {
+                if (currentPage < totalPages) {
+                    performSearch(currentCodePostal, currentPage + 1, currentPageSize);
+                }
+            });
+
+            console.log('✅ Système de pagination INPI frontend initialisé');
         });
         </script>
         <?php
@@ -670,7 +997,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -701,7 +1027,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -752,11 +1077,6 @@ class SCI_Shortcodes {
                 color: white;
                 text-decoration: none;
             }
-            
-            .maps-link:focus {
-                outline: 2px solid #4285f4;
-                outline-offset: 2px;
-            }
             </style>
             
             <h1><?php echo esc_html($atts['title']); ?></h1>
@@ -789,7 +1109,6 @@ class SCI_Shortcodes {
                                 <td><?php echo esc_html($fav['ville']); ?></td>
                                 <td><?php echo esc_html($fav['code_postal']); ?></td>
                                 <td>
-                                    <!-- ✅ NOUVELLE CELLULE : LIEN GOOGLE MAPS -->
                                     <?php 
                                     $maps_query = urlencode($fav['adresse'] . ' ' . $fav['code_postal'] . ' ' . $fav['ville']);
                                     $maps_url = 'https://www.google.com/maps/place/' . $maps_query;
@@ -798,7 +1117,7 @@ class SCI_Shortcodes {
                                        target="_blank" 
                                        class="maps-link"
                                        title="Localiser <?php echo esc_attr($fav['denomination']); ?> sur Google Maps">
-                                        📍 Localiser
+                                        Localiser SCI
                                     </a>
                                 </td>
                                 <td>
@@ -902,7 +1221,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -937,7 +1255,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -1042,7 +1359,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -1077,7 +1393,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
