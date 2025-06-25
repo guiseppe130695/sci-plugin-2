@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     let selectedEntries = [];
 
-    // Contenu par défaut pour le courriel
+    // ✅ MODIFIÉ : Contenu par défaut SANS "[Vos coordonnées]"
     const defaultEmailContent = `Madame, Monsieur [NOM],
 
 Nous espérons que ce courrier vous trouve en bonne santé.
@@ -30,9 +30,7 @@ Si cette démarche vous intéresse, nous vous invitons à nous contacter afin de
 
 Dans l'attente de votre retour, nous vous prions d'agréer, Madame, Monsieur [NOM], l'expression de nos salutations distinguées.
 
-Cordialement,
-
-[Vos coordonnées]`;
+Cordialement`;
 
     // Mise à jour du compteur et activation du bouton
     function updateSelectedCount() {
@@ -141,7 +139,7 @@ Cordialement,
                     <li>Pour afficher le nom du destinataire sur le couriel tapez l'index <code style="background:#f8f9fa; padding:2px 4px; border-radius:3px;">[NOM]</code></li>
                     <li>Soyez professionnel et courtois dans votre approche</li>
                     <li>Précisez clairement l'objet de votre demande</li>
-                    <li>N'oubliez pas d'ajouter vos coordonnées de contact</li>
+                    <li>N'oubliez pas d'ajouter vos coordonnées de contact dans le contenu</li>
                 </ul>
             </div>
 

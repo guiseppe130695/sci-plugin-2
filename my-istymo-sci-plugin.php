@@ -14,7 +14,8 @@ require_once plugin_dir_path(__FILE__) . 'includes/favoris-handler.php';
 require_once plugin_dir_path(__FILE__) . 'includes/config-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/campaign-manager.php';
 require_once plugin_dir_path(__FILE__) . 'includes/woocommerce-integration.php';
-require_once plugin_dir_path(__FILE__) . 'includes/shortcodes.php'; // ✅ NOUVEAU
+require_once plugin_dir_path(__FILE__) . 'includes/shortcodes.php';
+require_once plugin_dir_path(__FILE__) . 'includes/inpi-token-manager.php'; // ✅ NOUVEAU
 
 
 // --- Ajout du menu SCI dans l'admin WordPress ---
@@ -82,6 +83,23 @@ function sci_afficher_panel() {
     $config_manager = sci_config_manager();
     if (!$config_manager->is_configured()) {
         echo '<div class="notice notice-error"><p><strong>⚠️ Configuration manquante :</strong> Veuillez configurer vos tokens API dans <a href="' . admin_url('admin.php?page=sci-config') . '">Configuration</a>.</p></div>';
+    }
+
+    // ✅ NOUVEAU : Vérifier la configuration INPI
+    $inpi_token_manager = sci_inpi_token_manager();
+    $username = get_option('sci_inpi_username');
+    $password = get_option('sci_inpi_password');
+    
+    if (!$username || !$password) {
+        echo '<div class="notice notice-warning"><p><strong>⚠️ Identifiants INPI manquants :</strong> Veuillez configurer vos identifiants INPI dans <a href="' . admin_url('admin.php?page=sci-inpi-credentials') . '">Identifiants INPI</a> pour la génération automatique de tokens.</p></div>';
+    } else {
+        // Vérifier le statut du token
+        $token_valid = $inpi_token_manager->check_token_validity(false);
+        if (!$token_valid) {
+            echo '<div class="notice notice-info"><p><strong>ℹ️ Token INPI :</strong> Le token sera généré automatiquement lors de votre première recherche. <a href="' . admin_url('admin.php?page=sci-inpi-credentials') . '">Gérer les tokens</a></p></div>';
+        } else {
+            echo '<div class="notice notice-success"><p><strong>✅ Token INPI :</strong> Token valide et prêt à l\'utilisation. <a href="' . admin_url('admin.php?page=sci-inpi-credentials') . '">Gérer les tokens</a></p></div>';
+        }
     }
 
     // Vérifier WooCommerce
@@ -280,16 +298,19 @@ function sci_afficher_panel() {
     <?php
 }
 
-// --- Appel API INPI pour récupérer les entreprises SCI par code postal ---
+// ✅ MODIFIÉ : Appel API INPI avec gestion automatique des tokens
 function sci_fetch_inpi_data($code_postal) {
-    // Récupère le token depuis la configuration sécurisée
-    $config_manager = sci_config_manager();
-    $token = $config_manager->get_inpi_token();
-    $api_url = $config_manager->get_inpi_api_url();
+    // Utiliser le gestionnaire de tokens INPI
+    $inpi_token_manager = sci_inpi_token_manager();
+    $token = $inpi_token_manager->get_token();
 
     if (empty($token)) {
-        return new WP_Error('token_manquant', 'Token INPI non configuré. Veuillez configurer vos API dans les paramètres.');
+        return new WP_Error('token_manquant', 'Impossible de générer un token INPI. Veuillez vérifier vos identifiants dans la configuration.');
     }
+
+    // Récupérer l'URL depuis la configuration
+    $config_manager = sci_config_manager();
+    $api_url = $config_manager->get_inpi_api_url();
 
     // URL de l'API avec le code postal passé en paramètre dynamique
     $url = $api_url . '?companyName=SCI&pageSize=100&zipCodes[]=' . urlencode($code_postal);
@@ -303,11 +324,16 @@ function sci_fetch_inpi_data($code_postal) {
         'timeout' => 20
     ];
 
+    lettre_laposte_log("=== REQUÊTE API INPI ===");
+    lettre_laposte_log("URL: $url");
+    lettre_laposte_log("Token: " . substr($token, 0, 20) . "...");
+
     // Effectue la requête HTTP GET via WordPress HTTP API
     $reponse = wp_remote_get($url, $args);
 
     // Vérifie s'il y a une erreur réseau
     if (is_wp_error($reponse)) {
+        lettre_laposte_log("❌ Erreur réseau INPI: " . $reponse->get_error_message());
         return new WP_Error('requete_invalide', 'Erreur lors de la requête : ' . $reponse->get_error_message());
     }
 
@@ -315,13 +341,46 @@ function sci_fetch_inpi_data($code_postal) {
     $code_http = wp_remote_retrieve_response_code($reponse);
     $corps     = wp_remote_retrieve_body($reponse);
 
-    // Si le code HTTP n'est pas 200 OK, retourne une erreur
+    lettre_laposte_log("Code HTTP INPI: $code_http");
+    lettre_laposte_log("Réponse INPI: " . substr($corps, 0, 200) . "...");
+
+    // ✅ NOUVEAU : Gestion automatique des erreurs d'authentification
+    if ($code_http === 401 || $code_http === 403) {
+        lettre_laposte_log("🔄 Erreur d'authentification INPI détectée, tentative de régénération du token...");
+        
+        // Tenter de régénérer le token
+        $new_token = $inpi_token_manager->handle_auth_error();
+        
+        if ($new_token) {
+            lettre_laposte_log("✅ Nouveau token généré, nouvelle tentative de requête...");
+            
+            // Refaire la requête avec le nouveau token
+            $args['headers']['Authorization'] = 'Bearer ' . $new_token;
+            $reponse = wp_remote_get($url, $args);
+            
+            if (is_wp_error($reponse)) {
+                return new WP_Error('requete_invalide', 'Erreur lors de la requête après régénération du token : ' . $reponse->get_error_message());
+            }
+            
+            $code_http = wp_remote_retrieve_response_code($reponse);
+            $corps = wp_remote_retrieve_body($reponse);
+            
+            lettre_laposte_log("Code HTTP après régénération: $code_http");
+        } else {
+            return new WP_Error('token_regeneration_failed', 'Impossible de régénérer le token INPI. Vérifiez vos identifiants.');
+        }
+    }
+
+    // Si le code HTTP n'est toujours pas 200 OK, retourne une erreur
     if ($code_http !== 200) {
-        return new WP_Error('api_inpi', "Erreur de l'API (code $code_http) : $corps");
+        lettre_laposte_log("❌ Erreur API INPI finale: Code $code_http - $corps");
+        return new WP_Error('api_inpi', "Erreur de l'API INPI (code $code_http) : $corps");
     }
 
     // Décode le JSON en tableau associatif PHP
     $donnees = json_decode($corps, true);
+
+    lettre_laposte_log("✅ Requête INPI réussie, " . (is_array($donnees) ? count($donnees) : 0) . " résultats");
 
     return $donnees; // Retourne les données brutes
 }
