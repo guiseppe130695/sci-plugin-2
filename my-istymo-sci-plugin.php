@@ -249,7 +249,7 @@ function sci_afficher_panel() {
                                    target="_blank" 
                                    class="maps-link"
                                    title="Localiser <?php echo esc_attr($res['denomination']); ?> sur Google Maps">
-                                    Géolocalisation
+                                    Localiser SCI
                                 </a>
                             </td>
                             <td>
