@@ -231,7 +231,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -293,7 +292,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -391,6 +389,30 @@ class SCI_Shortcodes {
                 font-size: 10px;
             }
             
+            /* ✅ STYLES POUR LES LIENS GOOGLE MAPS */
+            .maps-link {
+                display: inline-block;
+                padding: 4px 8px;
+                background: #4285f4;
+                color: white;
+                text-decoration: none;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: 500;
+                transition: background-color 0.3s ease;
+            }
+            
+            .maps-link:hover {
+                background: #3367d6;
+                color: white;
+                text-decoration: none;
+            }
+            
+            .maps-link:focus {
+                outline: 2px solid #4285f4;
+                outline-offset: 2px;
+            }
+            
             @media (max-width: 768px) {
                 .sci-frontend-wrapper {
                     padding: 15px;
@@ -415,6 +437,11 @@ class SCI_Shortcodes {
                 
                 .contact-status-text {
                     font-size: 9px;
+                }
+                
+                .maps-link {
+                    font-size: 11px;
+                    padding: 3px 6px;
                 }
             }
             </style>
@@ -489,7 +516,8 @@ class SCI_Shortcodes {
                             <th>Adresse</th>
                             <th>Ville</th>
                             <th>Code Postal</th>
-                            <th>Statut</th> <!-- ✅ NOUVELLE COLONNE -->
+                            <th>Statut</th>
+                            <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
                             <th>Sélection</th>
                         </tr>
                     </thead>
@@ -520,6 +548,19 @@ class SCI_Shortcodes {
                                     </span>
                                 </td>
                                 <td>
+                                    <!-- ✅ NOUVELLE CELLULE : LIEN GOOGLE MAPS -->
+                                    <?php 
+                                    $maps_query = urlencode($res['adresse'] . ' ' . $res['code_postal'] . ' ' . $res['ville']);
+                                    $maps_url = 'https://www.google.com/maps/place/' . $maps_query;
+                                    ?>
+                                    <a href="<?php echo esc_url($maps_url); ?>" 
+                                       target="_blank" 
+                                       class="maps-link"
+                                       title="Localiser <?php echo esc_attr($res['denomination']); ?> sur Google Maps">
+                                        📍 Maps
+                                    </a>
+                                </td>
+                                <td>
                                     <input type="checkbox" class="send-letter-checkbox"
                                         data-denomination="<?php echo esc_attr($res['denomination']); ?>"
                                         data-dirigeant="<?php echo esc_attr($res['dirigeant']); ?>"
@@ -536,9 +577,9 @@ class SCI_Shortcodes {
             <?php endif; ?>
         </div>
         
-        <!-- ✅ POPUP LETTRE AVEC STYLES INLINE -->
+        <!-- ✅ POPUP LETTRE SANS OMBRES -->
         <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
-            <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+            <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px;">
                 <!-- Étape 1 : Liste des SCI sélectionnées -->
                 <div class="step" id="step-1">
                     <h2>📋 SCI sélectionnées</h2>
@@ -642,7 +683,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -673,7 +713,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -705,6 +744,37 @@ class SCI_Shortcodes {
                 border: 1px solid #bee5eb;
                 margin: 15px 0;
             }
+            
+            /* ✅ STYLES POUR LES LIENS GOOGLE MAPS */
+            .maps-link {
+                display: inline-block;
+                padding: 4px 8px;
+                background: #4285f4;
+                color: white;
+                text-decoration: none;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: 500;
+                transition: background-color 0.3s ease;
+            }
+            
+            .maps-link:hover {
+                background: #3367d6;
+                color: white;
+                text-decoration: none;
+            }
+            
+            .maps-link:focus {
+                outline: 2px solid #4285f4;
+                outline-offset: 2px;
+            }
+            
+            @media (max-width: 768px) {
+                .maps-link {
+                    font-size: 11px;
+                    padding: 3px 6px;
+                }
+            }
             </style>
             
             <h1><?php echo esc_html($atts['title']); ?></h1>
@@ -723,6 +793,7 @@ class SCI_Shortcodes {
                             <th>Adresse</th>
                             <th>Ville</th>
                             <th>Code Postal</th>
+                            <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -735,6 +806,19 @@ class SCI_Shortcodes {
                                 <td><?php echo esc_html($fav['adresse']); ?></td>
                                 <td><?php echo esc_html($fav['ville']); ?></td>
                                 <td><?php echo esc_html($fav['code_postal']); ?></td>
+                                <td>
+                                    <!-- ✅ NOUVELLE CELLULE : LIEN GOOGLE MAPS -->
+                                    <?php 
+                                    $maps_query = urlencode($fav['adresse'] . ' ' . $fav['code_postal'] . ' ' . $fav['ville']);
+                                    $maps_url = 'https://www.google.com/maps/place/' . $maps_query;
+                                    ?>
+                                    <a href="<?php echo esc_url($maps_url); ?>" 
+                                       target="_blank" 
+                                       class="maps-link"
+                                       title="Localiser <?php echo esc_attr($fav['denomination']); ?> sur Google Maps">
+                                        📍 Maps
+                                    </a>
+                                </td>
                                 <td>
                                     <button class="remove-fav-btn sci-button" 
                                             data-siren="<?php echo esc_attr($fav['siren']); ?>"
@@ -836,7 +920,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -871,7 +954,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {
@@ -976,7 +1058,6 @@ class SCI_Shortcodes {
                 padding: 20px;
                 background: #fff;
                 border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper h1 {
                 color: #333;
@@ -1011,7 +1092,6 @@ class SCI_Shortcodes {
                 background: white;
                 border-radius: 6px;
                 overflow: hidden;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             .sci-frontend-wrapper .sci-table th,
             .sci-frontend-wrapper .sci-table td {

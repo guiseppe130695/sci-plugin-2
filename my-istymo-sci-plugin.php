@@ -190,7 +190,8 @@ function sci_afficher_panel() {
                         <th>Adresse</th>
                         <th>Ville</th>
                         <th>Code Postal</th>
-                        <th>Statut</th> <!-- ✅ NOUVELLE COLONNE -->
+                        <th>Statut</th>
+                        <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
                         <th>Sélection</th>
                     </tr>
                 </thead>
@@ -221,6 +222,19 @@ function sci_afficher_panel() {
                                 </span>
                             </td>
                             <td>
+                                <!-- ✅ NOUVELLE CELLULE : LIEN GOOGLE MAPS -->
+                                <?php 
+                                $maps_query = urlencode($res['adresse'] . ' ' . $res['code_postal'] . ' ' . $res['ville']);
+                                $maps_url = 'https://www.google.com/maps/place/' . $maps_query;
+                                ?>
+                                <a href="<?php echo esc_url($maps_url); ?>" 
+                                   target="_blank" 
+                                   class="maps-link"
+                                   title="Localiser <?php echo esc_attr($res['denomination']); ?> sur Google Maps">
+                                    📍 Maps
+                                </a>
+                            </td>
+                            <td>
                                 <input type="checkbox" class="send-letter-checkbox"
                                     data-denomination="<?php echo esc_attr($res['denomination']); ?>"
                                     data-dirigeant="<?php echo esc_attr($res['dirigeant']); ?>"
@@ -238,9 +252,9 @@ function sci_afficher_panel() {
         <?php endif; ?>
     </div>
 
-<!-- Popup lettre avec paiement intégré en 4 étapes -->
+<!-- ✅ POPUP LETTRE SANS OMBRES -->
 <div id="letters-popup" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:10000; justify-content:center; align-items:center;">
-  <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+  <div style="background:#fff; padding:25px; width:700px; max-width:95vw; max-height:95vh; overflow-y:auto; border-radius:12px;">
 
     <!-- Étape 1 : Liste des SCI sélectionnées -->
     <div class="step" id="step-1">
@@ -632,13 +646,14 @@ function sci_favoris_page() {
                     <th>Adresse</th>
                     <th>Ville</th>
                     <th>Code Postal</th>
+                    <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($favoris)): ?>
                     <tr>
-                        <td colspan="7" style="text-align:center;">Aucun favori pour le moment.</td>
+                        <td colspan="8" style="text-align:center;">Aucun favori pour le moment.</td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($favoris as $fav): ?>
@@ -649,6 +664,19 @@ function sci_favoris_page() {
                             <td><?php echo esc_html($fav['adresse']); ?></td>
                             <td><?php echo esc_html($fav['ville']); ?></td>
                             <td><?php echo esc_html($fav['code_postal']); ?></td>
+                            <td>
+                                <!-- ✅ NOUVELLE CELLULE : LIEN GOOGLE MAPS -->
+                                <?php 
+                                $maps_query = urlencode($fav['adresse'] . ' ' . $fav['code_postal'] . ' ' . $fav['ville']);
+                                $maps_url = 'https://www.google.com/maps/place/' . $maps_query;
+                                ?>
+                                <a href="<?php echo esc_url($maps_url); ?>" 
+                                   target="_blank" 
+                                   class="maps-link"
+                                   title="Localiser <?php echo esc_attr($fav['denomination']); ?> sur Google Maps">
+                                    📍 Maps
+                                </a>
+                            </td>
                             <td>
                                 <button class="remove-fav-btn button button-small" 
                                         data-siren="<?php echo esc_attr($fav['siren']); ?>">
