@@ -183,15 +183,15 @@ function sci_afficher_panel() {
             <table class="widefat fixed striped">
                 <thead>
                     <tr>
-                        <th>⭐</th>
+                        <th>Favoris</th>
                         <th>Dénomination</th>
                         <th>Dirigeant</th>
                         <th>SIREN</th>
                         <th>Adresse</th>
                         <th>Ville</th>
                         <th>Code Postal</th>
-                        <th>Statut</th>
-                        <th>📍 Localiser</th> <!-- ✅ NOUVELLE COLONNE -->
+                        <th>Déjà contacté ?</th>
+                        <th>Géolocalisation</th> <!-- ✅ NOUVELLE COLONNE -->
                         <th>Sélection</th>
                     </tr>
                 </thead>
@@ -231,7 +231,7 @@ function sci_afficher_panel() {
                                    target="_blank" 
                                    class="maps-link"
                                    title="Localiser <?php echo esc_attr($res['denomination']); ?> sur Google Maps">
-                                    📍 Maps
+                                    Géolocalisation
                                 </a>
                             </td>
                             <td>
