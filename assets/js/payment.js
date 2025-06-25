@@ -256,7 +256,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="recap-section">
                     <h3>📦 Services inclus</h3>
                     <div class="services-list">
-                        <div class="service-item">✅ Génération automatique des PDFs personnalisés</div>
                         <div class="service-item">✅ Suivi de la distribution</div>
                         <div class="service-item">✅ Historique complet dans vos campagnes</div>
                         <div class="service-item">✅ Support technique inclus</div>
